@@ -1,0 +1,1520 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Football Tactics MVP</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #101317;
+      --panel: #191e24;
+      --panel-soft: #20262d;
+      --line: rgba(255, 255, 255, 0.13);
+      --field: #247047;
+      --field-alt: #1f633e;
+      --text: #eef4f6;
+      --muted: #9caab3;
+      --blue: #2878ff;
+      --blue-deep: #134eb0;
+      --red: #e84d55;
+      --red-deep: #9f2730;
+      --yellow: #ffd84f;
+      --shadow: 0 16px 44px rgba(0, 0, 0, 0.26);
+      --radius: 8px;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      min-height: 100vh;
+      margin: 0;
+      color: var(--text);
+      background:
+        radial-gradient(circle at 18% 12%, rgba(40, 120, 255, 0.13), transparent 30%),
+        radial-gradient(circle at 82% 20%, rgba(232, 77, 85, 0.12), transparent 28%),
+        linear-gradient(145deg, #0d1014 0%, var(--bg) 48%, #15181c 100%);
+    }
+
+    button,
+    select {
+      font: inherit;
+    }
+
+    .app {
+      width: min(1500px, 100%);
+      min-height: 100vh;
+      margin: 0 auto;
+      padding: 22px;
+      display: grid;
+      grid-template-columns: minmax(220px, 280px) minmax(440px, 1fr) minmax(220px, 280px);
+      gap: 18px;
+      align-items: stretch;
+    }
+
+    .team-panel,
+    .match-panel {
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: rgba(25, 30, 36, 0.92);
+      box-shadow: var(--shadow);
+    }
+
+    .team-panel {
+      min-width: 0;
+      padding: 18px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .team-heading {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+    }
+
+    .team-name {
+      min-width: 0;
+    }
+
+    .team-name h2 {
+      margin: 0 0 3px;
+      font-size: 20px;
+      line-height: 1.1;
+      letter-spacing: 0;
+    }
+
+    .team-name span {
+      display: block;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .team-mark {
+      width: 34px;
+      height: 34px;
+      flex: 0 0 auto;
+      display: grid;
+      place-items: center;
+      border-radius: 50%;
+      font-weight: 800;
+      font-size: 14px;
+      border: 2px solid rgba(255, 255, 255, 0.18);
+    }
+
+    .team-panel.blue .team-mark {
+      background: var(--blue);
+      box-shadow: 0 0 22px rgba(40, 120, 255, 0.32);
+    }
+
+    .team-panel.red .team-mark {
+      background: var(--red);
+      box-shadow: 0 0 22px rgba(232, 77, 85, 0.28);
+    }
+
+    .control-group {
+      display: grid;
+      gap: 7px;
+    }
+
+    .control-group label {
+      color: var(--muted);
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+
+    select {
+      width: 100%;
+      min-height: 40px;
+      color: var(--text);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: #12171c;
+      padding: 0 12px;
+      outline: none;
+    }
+
+    select:focus {
+      border-color: rgba(255, 255, 255, 0.32);
+    }
+
+    .player-list {
+      display: grid;
+      gap: 7px;
+      margin: 0;
+      padding: 0;
+      list-style: none;
+    }
+
+    .player-list li {
+      min-height: 34px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: var(--radius);
+      background: rgba(255, 255, 255, 0.035);
+      padding: 7px 10px;
+      color: #dfe7eb;
+      font-size: 14px;
+    }
+
+    .player-list b {
+      width: 24px;
+      height: 24px;
+      display: grid;
+      place-items: center;
+      flex: 0 0 auto;
+      border-radius: 50%;
+      color: #fff;
+      font-size: 12px;
+    }
+
+    .blue .player-list b {
+      background: var(--blue);
+    }
+
+    .red .player-list b {
+      background: var(--red);
+    }
+
+    .player-role {
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .match-panel {
+      min-width: 0;
+      padding: 16px;
+      display: grid;
+      grid-template-rows: auto 1fr;
+      gap: 14px;
+    }
+
+    .scorebar {
+      display: grid;
+      grid-template-columns: minmax(92px, 0.8fr) minmax(180px, 1fr) minmax(92px, 0.8fr);
+      align-items: center;
+      gap: 12px;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: var(--radius);
+      background: rgba(255, 255, 255, 0.035);
+      padding: 12px;
+    }
+
+    .clock,
+    .score {
+      min-height: 58px;
+      display: grid;
+      place-items: center;
+      border-radius: var(--radius);
+      background: #12171c;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      font-weight: 800;
+      line-height: 1;
+    }
+
+    .clock {
+      font-size: clamp(26px, 4vw, 42px);
+      font-variant-numeric: tabular-nums;
+    }
+
+    .score {
+      grid-template-columns: 1fr auto 1fr;
+      gap: 12px;
+      padding: 0 14px;
+      font-size: clamp(28px, 4vw, 44px);
+      font-variant-numeric: tabular-nums;
+    }
+
+    .score small {
+      color: var(--muted);
+      font-size: 14px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+
+    .controls {
+      display: grid;
+      gap: 8px;
+    }
+
+    .btn {
+      min-height: 42px;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: var(--radius);
+      color: var(--text);
+      background: var(--panel-soft);
+      cursor: pointer;
+      transition: transform 140ms ease, border-color 140ms ease, background 140ms ease;
+      white-space: normal;
+    }
+
+    .btn:hover {
+      transform: translateY(-1px);
+      border-color: rgba(255, 255, 255, 0.26);
+      background: #29313a;
+    }
+
+    .btn:active {
+      transform: translateY(0);
+    }
+
+    .btn.primary {
+      border-color: rgba(43, 211, 124, 0.4);
+      background: #16834a;
+    }
+
+    .btn.primary:hover {
+      background: #1b9656;
+    }
+
+    .match-body {
+      display: grid;
+      grid-template-columns: minmax(320px, 500px) minmax(240px, 1fr);
+      gap: 14px;
+      align-items: start;
+      min-width: 0;
+    }
+
+    .field-wrap {
+      width: min(100%, 500px);
+      justify-self: center;
+      align-self: stretch;
+      display: grid;
+      min-height: 0;
+    }
+
+    .field {
+      position: relative;
+      width: 100%;
+      aspect-ratio: 2 / 3;
+      min-height: 420px;
+      max-height: calc(100vh - 220px);
+      align-self: center;
+      overflow: hidden;
+      border: 3px solid rgba(255, 255, 255, 0.58);
+      border-radius: var(--radius);
+      background:
+        repeating-linear-gradient(
+          0deg,
+          var(--field) 0%,
+          var(--field) 10%,
+          var(--field-alt) 10%,
+          var(--field-alt) 20%
+        );
+      box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.13), 0 24px 55px rgba(0, 0, 0, 0.34);
+    }
+
+    .field::before,
+    .field::after {
+      content: "";
+      position: absolute;
+      pointer-events: none;
+    }
+
+    .field::before {
+      inset: 50% 0 auto;
+      height: 2px;
+      background: rgba(255, 255, 255, 0.62);
+      transform: translateY(-1px);
+    }
+
+    .field::after {
+      left: 50%;
+      top: 50%;
+      width: 26%;
+      aspect-ratio: 1;
+      border: 2px solid rgba(255, 255, 255, 0.62);
+      border-radius: 50%;
+      transform: translate(-50%, -50%);
+    }
+
+    .center-dot,
+    .box,
+    .goal-line {
+      position: absolute;
+      pointer-events: none;
+    }
+
+    .center-dot {
+      left: 50%;
+      top: 50%;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: rgba(255, 255, 255, 0.7);
+      transform: translate(-50%, -50%);
+      z-index: 1;
+    }
+
+    .box {
+      left: 25%;
+      width: 50%;
+      height: 16%;
+      border: 2px solid rgba(255, 255, 255, 0.58);
+      z-index: 1;
+    }
+
+    .box.top {
+      top: -2px;
+      border-top: 0;
+    }
+
+    .box.bottom {
+      bottom: -2px;
+      border-bottom: 0;
+    }
+
+    .goal-line {
+      left: 38%;
+      width: 24%;
+      height: 4%;
+      border-inline: 2px solid rgba(255, 255, 255, 0.48);
+      z-index: 1;
+    }
+
+    .goal-line.top {
+      top: 0;
+      border-bottom: 2px solid rgba(255, 255, 255, 0.48);
+    }
+
+    .goal-line.bottom {
+      bottom: 0;
+      border-top: 2px solid rgba(255, 255, 255, 0.48);
+    }
+
+    .player-token {
+      --size: clamp(28px, 4.2vw, 36px);
+      position: absolute;
+      left: calc(var(--x) * 1%);
+      top: calc(var(--y) * 1%);
+      width: var(--size);
+      height: var(--size);
+      display: grid;
+      place-items: center;
+      border: 2px solid rgba(255, 255, 255, 0.74);
+      border-radius: 50%;
+      color: #fff;
+      font-weight: 900;
+      font-size: 14px;
+      transform: translate(-50%, -50%);
+      z-index: 3;
+      box-shadow: 0 7px 18px rgba(0, 0, 0, 0.32);
+      transition: left 260ms ease, top 260ms ease, box-shadow 160ms ease, border-color 160ms ease;
+      user-select: none;
+    }
+
+    .player-token.blue {
+      background: radial-gradient(circle at 35% 25%, #5fa4ff 0%, var(--blue) 48%, var(--blue-deep) 100%);
+    }
+
+    .player-token.red {
+      background: radial-gradient(circle at 35% 25%, #ff8186 0%, var(--red) 48%, var(--red-deep) 100%);
+    }
+
+    .player-token.has-ball {
+      border-color: var(--yellow);
+      box-shadow: 0 0 0 4px rgba(255, 216, 79, 0.18), 0 0 28px rgba(255, 216, 79, 0.58);
+    }
+
+    .ball {
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      width: clamp(12px, 2.2vw, 16px);
+      height: clamp(12px, 2.2vw, 16px);
+      border-radius: 50%;
+      background: #f7fafc;
+      border: 2px solid #d6dde2;
+      box-shadow: 0 5px 14px rgba(0, 0, 0, 0.34), 0 0 14px rgba(255, 255, 255, 0.48);
+      transform: translate(-50%, -50%);
+      transition: left 560ms cubic-bezier(0.2, 0.8, 0.25, 1), top 560ms cubic-bezier(0.2, 0.8, 0.25, 1);
+      z-index: 5;
+      pointer-events: none;
+    }
+
+    .status-row {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      min-height: 30px;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .log-panel {
+      min-width: 0;
+      height: min(560px, calc(100vh - 210px));
+      min-height: 360px;
+      display: grid;
+      grid-template-rows: auto 1fr;
+      border: 1px solid rgba(255, 255, 255, 0.09);
+      border-radius: var(--radius);
+      background: rgba(18, 23, 28, 0.78);
+      overflow: hidden;
+    }
+
+    .log-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 13px 14px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      background: rgba(255, 255, 255, 0.035);
+    }
+
+    .log-header h3 {
+      margin: 0;
+      font-size: 15px;
+      letter-spacing: 0;
+    }
+
+    .log-badge {
+      flex: 0 0 auto;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+
+    .event-log {
+      margin: 0;
+      padding: 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      overflow-y: auto;
+      list-style: none;
+      scrollbar-color: rgba(255, 255, 255, 0.26) transparent;
+    }
+
+    .event-log li {
+      display: grid;
+      grid-template-columns: 48px 1fr;
+      gap: 9px;
+      align-items: start;
+      border: 1px solid rgba(255, 255, 255, 0.075);
+      border-left: 3px solid rgba(255, 255, 255, 0.22);
+      border-radius: var(--radius);
+      background: rgba(255, 255, 255, 0.035);
+      padding: 9px;
+      color: #dfe7eb;
+      font-size: 13px;
+      line-height: 1.35;
+    }
+
+    .event-log time {
+      color: var(--muted);
+      font-weight: 800;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .event-log .blue {
+      border-left-color: var(--blue);
+    }
+
+    .event-log .red {
+      border-left-color: var(--red);
+    }
+
+    .event-log .turnover {
+      border-left-color: var(--yellow);
+    }
+
+    .event-log .system {
+      border-left-color: #6ee7b7;
+      color: #d8f7ea;
+    }
+
+    .status-dot {
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+      background: var(--muted);
+      box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.04);
+    }
+
+    .status-dot.blue {
+      background: var(--blue);
+      box-shadow: 0 0 0 4px rgba(40, 120, 255, 0.18);
+    }
+
+    .status-dot.red {
+      background: var(--red);
+      box-shadow: 0 0 0 4px rgba(232, 77, 85, 0.16);
+    }
+
+    @media (max-width: 1120px) {
+      .app {
+        grid-template-columns: 1fr 1fr;
+      }
+
+      .match-panel {
+        grid-column: 1 / -1;
+        grid-row: 1;
+      }
+
+      .match-body {
+        grid-template-columns: minmax(320px, 500px) minmax(260px, 1fr);
+      }
+
+      .team-panel {
+        min-height: auto;
+      }
+    }
+
+    @media (max-width: 760px) {
+      .app {
+        padding: 12px;
+        grid-template-columns: 1fr;
+      }
+
+      .match-panel {
+        grid-template-rows: auto auto;
+        padding: 12px;
+      }
+
+      .match-body {
+        grid-template-columns: 1fr;
+      }
+
+      .scorebar {
+        grid-template-columns: 1fr;
+      }
+
+      .controls {
+        grid-template-columns: 1fr;
+      }
+
+      .field {
+        min-height: auto;
+        max-height: none;
+      }
+
+      .log-panel {
+        height: 300px;
+        min-height: 300px;
+      }
+
+      .player-token {
+        --size: 30px;
+        font-size: 12px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="app">
+    <aside class="team-panel blue" aria-label="Painel do Time Azul">
+      <div class="team-heading">
+        <div class="team-name">
+          <h2>Time Azul</h2>
+          <span>Mandante</span>
+        </div>
+        <div class="team-mark" aria-hidden="true">AZ</div>
+      </div>
+
+      <div class="control-group">
+        <label for="blue-formation">Formacao</label>
+        <select id="blue-formation">
+          <option>4-4-2</option>
+          <option>4-3-3</option>
+          <option>3-5-2</option>
+        </select>
+      </div>
+
+      <ol class="player-list" id="blue-list"></ol>
+    </aside>
+
+    <section class="match-panel" aria-label="Simulador da partida">
+      <header class="scorebar">
+        <div class="clock" id="clock">00'</div>
+        <div class="score" aria-label="Placar">
+          <small>Azul</small>
+          <span id="score">0 x 0</span>
+          <small>Vermelho</small>
+        </div>
+        <div class="controls" id="controls"></div>
+      </header>
+
+      <div class="match-body">
+        <div class="field-wrap">
+          <div class="field" id="field" aria-label="Campo de futebol">
+            <div class="box top"></div>
+            <div class="box bottom"></div>
+            <div class="goal-line top"></div>
+            <div class="goal-line bottom"></div>
+            <div class="center-dot"></div>
+            <div class="ball" id="ball" aria-hidden="true"></div>
+          </div>
+          <div class="status-row" aria-live="polite">
+            <span class="status-dot blue" id="status-dot"></span>
+            <span id="status-text">Posse: Time Azul 8</span>
+          </div>
+        </div>
+
+        <div class="log-panel" aria-label="Eventos da partida">
+          <div class="log-header">
+            <h3>Eventos da partida</h3>
+            <span class="log-badge" id="log-count">0 lances</span>
+          </div>
+          <ol class="event-log" id="event-log" aria-live="polite"></ol>
+        </div>
+      </div>
+    </section>
+
+    <aside class="team-panel red" aria-label="Painel do Time Vermelho">
+      <div class="team-heading">
+        <div class="team-name">
+          <h2>Time Vermelho</h2>
+          <span>Visitante</span>
+        </div>
+        <div class="team-mark" aria-hidden="true">VM</div>
+      </div>
+
+      <div class="control-group">
+        <label for="red-formation">Formacao</label>
+        <select id="red-formation">
+          <option>4-4-2</option>
+          <option selected>4-3-3</option>
+          <option>3-5-2</option>
+        </select>
+      </div>
+
+      <ol class="player-list" id="red-list"></ol>
+    </aside>
+  </main>
+
+  <script>
+    class Player {
+      constructor(number, name, team, role) {
+        this.number = number;
+        this.name = name;
+        this.team = team;
+        this.role = role;
+        this.baseX = 50;
+        this.baseY = 50;
+        this.targetX = 50;
+        this.targetY = 50;
+        this.pressure = 0;
+        this.marker = null;
+        this.movementRadius = 9;
+        this.x = 50;
+        this.y = 50;
+        this.element = document.createElement("div");
+        this.element.className = `player-token ${team.colorName}`;
+        this.element.textContent = number;
+        this.element.title = `${team.name} ${number} - ${name}`;
+      }
+
+      setPosition(point) {
+        this.x = point.x;
+        this.y = point.y;
+        this.element.style.setProperty("--x", this.x);
+        this.element.style.setProperty("--y", this.y);
+      }
+
+      setBasePosition(point) {
+        this.baseX = point.x;
+        this.baseY = point.y;
+        this.targetX = point.x;
+        this.targetY = point.y;
+        this.setPosition(point);
+      }
+
+      setTarget(point, radius = this.movementRadius, anchor = { x: this.baseX, y: this.baseY }) {
+        const limited = this.limitToTacticalArea(point, radius, anchor);
+        this.targetX = limited.x;
+        this.targetY = limited.y;
+      }
+
+      moveTowardTarget(speed) {
+        const dx = this.targetX - this.x;
+        const dy = this.targetY - this.y;
+        const distance = Math.hypot(dx, dy);
+
+        if (distance <= 0.05) return;
+
+        const step = Math.min(speed, distance);
+        this.setPosition({
+          x: this.x + (dx / distance) * step,
+          y: this.y + (dy / distance) * step
+        });
+      }
+
+      returnToBase(speed = 1.7) {
+        this.setTarget({ x: this.baseX, y: this.baseY });
+        this.moveTowardTarget(speed);
+      }
+
+      limitToTacticalArea(point, radius = this.movementRadius, anchor = { x: this.baseX, y: this.baseY }) {
+        const dx = point.x - anchor.x;
+        const dy = point.y - anchor.y;
+        const distance = Math.hypot(dx, dy);
+        const limited = distance > radius
+          ? {
+              x: anchor.x + (dx / distance) * radius,
+              y: anchor.y + (dy / distance) * radius
+            }
+          : point;
+
+        return {
+          x: Math.max(6, Math.min(94, limited.x)),
+          y: Math.max(6, Math.min(94, limited.y))
+        };
+      }
+
+      setRole(role) {
+        this.role = role;
+        this.element.title = `${this.team.name} ${this.number} - ${this.name} (${role})`;
+      }
+
+      distanceTo(other) {
+        const dx = this.x - other.x;
+        const dy = this.y - other.y;
+        return Math.hypot(dx, dy);
+      }
+    }
+
+    class Team {
+      constructor(options) {
+        this.name = options.name;
+        this.colorName = options.colorName;
+        this.attacksDown = options.attacksDown;
+        this.select = options.select;
+        this.list = options.list;
+        this.players = this.createPlayers();
+        this.select.addEventListener("change", () => this.applyFormation(this.select.value));
+      }
+
+      createPlayers() {
+        const names = [
+          "Rafael", "Bruno", "Caio", "Diego", "Andre", "Lucas",
+          "Mateus", "Nicolas", "Pedro", "Tiago", "Vitor"
+        ];
+        return names.map((name, index) => new Player(index + 1, name, this, "RES"));
+      }
+
+      renderList() {
+        this.list.innerHTML = "";
+        this.players.forEach((player) => {
+          const item = document.createElement("li");
+          item.innerHTML = `<span><b>${player.number}</b></span><span>${player.name}</span><span class="player-role">${player.role}</span>`;
+          this.list.appendChild(item);
+        });
+      }
+
+      mount(field) {
+        this.players.forEach((player) => field.appendChild(player.element));
+      }
+
+      applyFormation(name) {
+        const formation = Team.formations[name] || Team.formations["4-4-2"];
+        const mapped = this.attacksDown
+          ? formation.slots.map((slot) => ({ ...slot, y: 100 - slot.y }))
+          : formation.slots;
+
+        this.players.forEach((player, index) => {
+          player.setRole(mapped[index].role);
+          player.setBasePosition(mapped[index]);
+        });
+        this.renderList();
+      }
+
+      static get formations() {
+        return {
+          "4-4-2": {
+            slots: [
+              { role: "GOL", x: 50, y: 91 },
+              { role: "LE", x: 18, y: 77 }, { role: "ZAG", x: 39, y: 79 }, { role: "ZAG", x: 61, y: 79 }, { role: "LD", x: 82, y: 77 },
+              { role: "ME", x: 18, y: 60 }, { role: "MC", x: 40, y: 60 }, { role: "MC", x: 60, y: 60 }, { role: "MD", x: 82, y: 60 },
+              { role: "ATA", x: 42, y: 41 }, { role: "ATA", x: 58, y: 41 }
+            ]
+          },
+          "4-3-3": {
+            slots: [
+              { role: "GOL", x: 50, y: 91 },
+              { role: "LE", x: 18, y: 77 }, { role: "ZAG", x: 39, y: 79 }, { role: "ZAG", x: 61, y: 79 }, { role: "LD", x: 82, y: 77 },
+              { role: "MC", x: 35, y: 61 }, { role: "VOL", x: 50, y: 65 }, { role: "MC", x: 65, y: 61 },
+              { role: "PE", x: 22, y: 42 }, { role: "CA", x: 50, y: 38 }, { role: "PD", x: 78, y: 42 }
+            ]
+          },
+          "3-5-2": {
+            slots: [
+              { role: "GOL", x: 50, y: 91 },
+              { role: "ZAG", x: 31, y: 78 }, { role: "ZAG", x: 50, y: 80 }, { role: "ZAG", x: 69, y: 78 },
+              { role: "ALA", x: 14, y: 60 }, { role: "MC", x: 34, y: 58 }, { role: "VOL", x: 50, y: 62 }, { role: "MC", x: 66, y: 58 }, { role: "ALA", x: 86, y: 60 },
+              { role: "ATA", x: 42, y: 40 }, { role: "ATA", x: 58, y: 40 }
+            ]
+          }
+        };
+      }
+    }
+
+    class Game {
+      constructor() {
+        this.field = document.getElementById("field");
+        this.ball = document.getElementById("ball");
+        this.clock = document.getElementById("clock");
+        this.score = document.getElementById("score");
+        this.statusText = document.getElementById("status-text");
+        this.statusDot = document.getElementById("status-dot");
+        this.controls = document.getElementById("controls");
+        this.eventLog = document.getElementById("event-log");
+        this.logCount = document.getElementById("log-count");
+        this.logEntries = [];
+        this.lastShotZoneKey = "";
+        this.state = "pre";
+        this.period = 1;
+        this.halfMinute = 0;
+        this.stoppage = this.drawStoppage();
+        this.scoreBlue = 0;
+        this.scoreRed = 0;
+        this.lastShotZoneKey = "";
+        this.intervalId = null;
+
+        this.blue = new Team({
+          name: "Time Azul",
+          colorName: "blue",
+          attacksDown: false,
+          select: document.getElementById("blue-formation"),
+          list: document.getElementById("blue-list")
+        });
+
+        this.red = new Team({
+          name: "Time Vermelho",
+          colorName: "red",
+          attacksDown: true,
+          select: document.getElementById("red-formation"),
+          list: document.getElementById("red-list")
+        });
+
+        this.teams = [this.blue, this.red];
+        this.possession = this.blue.players[7];
+        this.bindControls();
+        this.render();
+      }
+
+      bindControls() {
+        this.teams.forEach((team) => {
+          team.select.addEventListener("change", () => {
+            this.updateBall();
+            this.updateStatus();
+          });
+        });
+
+        window.addEventListener("resize", () => this.updateBall(false));
+      }
+
+      render() {
+        this.teams.forEach((team) => {
+          team.mount(this.field);
+          team.applyFormation(team.select.value);
+        });
+        this.calculatePressure();
+        this.updateClock();
+        this.updateScore();
+        this.updatePossession(this.possession, false);
+        this.updateControls();
+        this.addEventLog("00'", "Aguardando o apito inicial", "system");
+      }
+
+      start() {
+        if (this.intervalId || this.state === "finished") return;
+        const previousState = this.state;
+
+        if (this.state === "halftime") {
+          this.period = 2;
+          this.halfMinute = 0;
+          this.resetTeamShapes();
+        }
+
+        this.state = "playing";
+        this.updateClock();
+        this.updateControls();
+        this.updateStatus();
+        if (previousState === "pre") {
+          this.addEventLog(this.clock.textContent, "Partida iniciada", "system");
+        } else if (previousState === "halftime") {
+          this.addEventLog(this.clock.textContent, "Segundo tempo iniciado", "system");
+        } else if (previousState === "paused") {
+          this.addEventLog(this.clock.textContent, "Partida retomada", "system");
+        }
+        this.intervalId = window.setInterval(() => this.tick(), 1000);
+      }
+
+      pause() {
+        if (this.state !== "playing") return;
+        this.stop();
+        this.state = "paused";
+        this.updateControls();
+        this.updateStatus("Partida pausada");
+        this.addEventLog(this.clock.textContent, "Partida pausada", "system");
+      }
+
+      tick() {
+        if (this.state !== "playing") {
+          this.stop();
+          return;
+        }
+
+        this.halfMinute += 1;
+        this.updateClock();
+        this.updateMovement();
+        this.decideBallAction();
+
+        if (this.isHalfComplete()) {
+          this.stop();
+          if (this.period === 1) {
+            this.state = "halftime";
+            this.updateStatus(`Intervalo - acrescimos do 1o tempo: +${this.stoppage.first}`);
+            this.addEventLog(this.clock.textContent, `Intervalo: acrescimos do 1o tempo +${this.stoppage.first}`, "system");
+          } else {
+            this.state = "finished";
+            this.updateStatus(`Fim de jogo - acrescimos do 2o tempo: +${this.stoppage.second}`);
+            this.addEventLog(this.clock.textContent, `Fim de jogo: acrescimos do 2o tempo +${this.stoppage.second}`, "system");
+          }
+          this.updateControls();
+        }
+      }
+
+      stop() {
+        window.clearInterval(this.intervalId);
+        this.intervalId = null;
+      }
+
+      reset() {
+        if (this.state !== "finished") return;
+        this.stop();
+        this.state = "pre";
+        this.period = 1;
+        this.halfMinute = 0;
+        this.stoppage = this.drawStoppage();
+        this.scoreBlue = 0;
+        this.scoreRed = 0;
+        this.resetTeamShapes();
+        this.calculatePressure();
+        this.updateClock();
+        this.updateScore();
+        this.updatePossession(this.blue.players[7], false);
+        this.updateControls();
+        this.clearEventLog();
+        this.addEventLog("00'", "Jogo reiniciado. Aguardando o apito inicial", "system");
+      }
+
+      drawStoppage() {
+        return {
+          first: Math.floor(Math.random() * 5) + 1,
+          second: Math.floor(Math.random() * 5) + 1
+        };
+      }
+
+      halfLimit() {
+        return 45 + (this.period === 1 ? this.stoppage.first : this.stoppage.second);
+      }
+
+      isHalfComplete() {
+        return this.halfMinute >= this.halfLimit();
+      }
+
+      resetTeamShapes() {
+        this.teams.forEach((team) => {
+          team.players.forEach((player) => {
+            player.setPosition({ x: player.baseX, y: player.baseY });
+            player.setTarget({ x: player.baseX, y: player.baseY });
+          });
+        });
+        this.updateBall(false);
+      }
+
+      updateMovement() {
+        this.calculatePressure();
+        this.teams.forEach((team) => {
+          if (team === this.possession.team) {
+            this.moveTeamInPossession(team);
+          } else {
+            this.moveTeamOutOfPossession(team);
+          }
+        });
+        this.calculatePressure();
+        this.updateBall(true);
+      }
+
+      moveTeamInPossession(team) {
+        team.players.forEach((player) => {
+          const anchor = this.getAttackingAnchor(player);
+
+          if (player === this.possession) {
+            player.setTarget(this.getCarrierTarget(player), this.getAttackRadius(player), anchor);
+            player.moveTowardTarget(player.pressure < 0.5 ? 2.1 : 0.9);
+            return;
+          }
+
+          player.setTarget(this.getSupportTarget(player, anchor), this.getAttackRadius(player), anchor);
+          player.moveTowardTarget(1.55);
+        });
+      }
+
+      moveTeamOutOfPossession(team) {
+        const zoneMarks = this.assignZoneMarks(team);
+        const nearestPressers = this.getNearestPlayers(
+          team.players.filter((player) => this.canPressBall(player)),
+          this.possession,
+          2
+        );
+
+        team.players.forEach((player) => {
+          if (nearestPressers.includes(player)) {
+            player.setTarget(this.getPressTarget(player), 13);
+            player.moveTowardTarget(1.9);
+            return;
+          }
+
+          const markTarget = zoneMarks.get(player) || (!this.isDefensiveLineRole(player.role) ? this.findMarkTarget(player) : null);
+          if (markTarget) {
+            const radius = this.isDefensiveLineRole(player.role) ? 8 : 11;
+            player.setTarget(this.getMarkingTarget(player, markTarget), radius);
+            player.moveTowardTarget(1.45);
+            return;
+          }
+
+          player.setTarget(this.getDefensiveZoneTarget(player), this.isDefensiveLineRole(player.role) ? 5 : 8);
+          player.moveTowardTarget(this.isDefensiveLineRole(player.role) ? 1.05 : 1.35);
+        });
+      }
+
+      decideBallAction() {
+        const carrier = this.possession;
+
+        if (this.isInShotZone(carrier)) {
+          const shotZoneKey = `${carrier.team.name}-${carrier.number}`;
+          if (this.lastShotZoneKey !== shotZoneKey) {
+            this.addEventLog(this.clock.textContent, `${carrier.team.name} ${carrier.number} chegou a zona de finalizacao`, carrier.team.colorName);
+            this.lastShotZoneKey = shotZoneKey;
+          }
+        } else {
+          this.lastShotZoneKey = "";
+        }
+
+        if (this.shouldCarryBall(carrier)) {
+          this.logCarry(carrier);
+          this.updateBall(true);
+          this.updateStatus();
+          return;
+        }
+
+        this.passBall();
+      }
+
+      passBall() {
+        const passer = this.possession;
+        const receiver = this.chooseReceiver();
+        this.logBallMovement(passer, receiver);
+        this.updatePossession(receiver, true);
+      }
+
+      chooseReceiver() {
+        const allPlayers = this.teams.flatMap((team) => team.players);
+        const candidates = allPlayers.filter((player) => player !== this.possession);
+        const passMistake = Math.random() < 0.05 + this.possession.pressure * 0.11;
+        const sameTeam = candidates.filter((player) => player.team === this.possession.team);
+        const opponents = candidates.filter((player) => player.team !== this.possession.team);
+        const pool = passMistake ? opponents : sameTeam;
+        const weighted = pool.map((player) => {
+          const distance = Math.max(this.possession.distanceTo(player), 3);
+          const proximity = 120 / distance;
+          const teamBias = player.team === this.possession.team ? 8 : 1.6;
+          const forwardBias = this.forwardValue(player, this.possession.team);
+          const openSpaceBias = player.team === this.possession.team ? 1.25 - player.pressure : 1;
+          return {
+            player,
+            weight: Math.max(0.5, proximity * teamBias * forwardBias * openSpaceBias)
+          };
+        });
+
+        return this.pickWeighted(weighted);
+      }
+
+      shouldCarryBall(player) {
+        const goal = this.getGoalPoint(player.team);
+        const distanceToGoal = this.distanceBetween(player, goal);
+        const hasSpace = player.pressure < 0.52;
+        const notTooClose = distanceToGoal > 17;
+        const carryChance = player.pressure < 0.25 ? 0.56 : 0.3;
+
+        return hasSpace && notTooClose && Math.random() < carryChance;
+      }
+
+      getCarrierTarget(player) {
+        const goal = this.getGoalPoint(player.team);
+        const closestMarker = player.marker;
+        const away = closestMarker ? this.normalizedVector(closestMarker, player) : { x: 0, y: 0 };
+        const towardGoal = this.normalizedVector(player, goal);
+
+        return {
+          x: player.x + towardGoal.x * 5 + away.x * player.pressure * 4,
+          y: player.y + towardGoal.y * 5 + away.y * player.pressure * 4
+        };
+      }
+
+      getSupportTarget(player, anchor) {
+        const carrier = this.possession;
+        const goal = this.getGoalPoint(player.team);
+        const marker = player.marker;
+        const towardBall = this.normalizedVector(player, carrier);
+        const towardGoal = this.normalizedVector(player, goal);
+        const awayFromMarker = marker ? this.normalizedVector(marker, player) : { x: 0, y: 0 };
+        const widthBias = this.isWideRole(player.role) ? Math.sign(player.baseX - 50) * 2.5 : 0;
+
+        return {
+          x: anchor.x + towardBall.x * 2.3 + towardGoal.x * 2 + awayFromMarker.x * player.pressure * 5 + widthBias,
+          y: anchor.y + towardBall.y * 2.3 + towardGoal.y * 2.7 + awayFromMarker.y * player.pressure * 5
+        };
+      }
+
+      getAttackingAnchor(player) {
+        const direction = player.team.attacksDown ? 1 : -1;
+        const progress = player.team.attacksDown ? this.possession.y : 100 - this.possession.y;
+        const teamShift = this.clamp((progress - 28) * 0.52, 0, 24);
+        const roleFactor = this.getAttackRoleFactor(player.role);
+
+        return {
+          x: player.baseX,
+          y: player.baseY + direction * teamShift * roleFactor
+        };
+      }
+
+      getAttackRoleFactor(role) {
+        if (role === "GOL") return 0;
+        if (this.isDefensiveLineRole(role)) return 0.28;
+        if (role === "VOL") return 0.52;
+        if (["MC", "ME", "MD", "ALA"].includes(role)) return 0.82;
+        return 1;
+      }
+
+      getAttackRadius(player) {
+        if (player.role === "GOL") return 3;
+        if (this.isDefensiveLineRole(player.role)) return 7;
+        if (player === this.possession) return 18;
+        if (this.isAttackingRole(player.role)) return 14;
+        return 10;
+      }
+
+      getPressTarget(player) {
+        const ownGoal = this.getOwnGoalPoint(player.team);
+        return this.pointBetween(this.possession, ownGoal, 0.18);
+      }
+
+      getMarkingTarget(player, target) {
+        const ownGoal = this.getOwnGoalPoint(player.team);
+        const blockPoint = this.pointBetween(target, ownGoal, 0.32);
+        const zoneDiscipline = this.isDefensiveLineRole(player.role) ? 0.36 : 0.18;
+
+        return {
+          x: blockPoint.x * (1 - zoneDiscipline) + player.baseX * zoneDiscipline,
+          y: blockPoint.y * (1 - zoneDiscipline) + player.baseY * zoneDiscipline
+        };
+      }
+
+      getDefensiveZoneTarget(player) {
+        if (player.role === "GOL") {
+          return { x: player.baseX, y: player.baseY };
+        }
+
+        const ballXShift = this.clamp((this.possession.x - player.baseX) * 0.12, -4, 4);
+        const ballYShift = this.isDefensiveLineRole(player.role)
+          ? this.clamp((this.possession.y - player.baseY) * 0.04, -2, 2)
+          : this.clamp((this.possession.y - player.baseY) * 0.1, -5, 5);
+
+        return {
+          x: player.baseX + ballXShift,
+          y: player.baseY + ballYShift
+        };
+      }
+
+      assignZoneMarks(team) {
+        const marks = new Map();
+        const defenders = team.players.filter((player) => this.isDefensiveLineRole(player.role));
+        const intruders = this.getOpponentTeam(team).players
+          .filter((opponent) => this.hasInvadedDefensiveZone(opponent, team));
+        const available = new Set(intruders);
+
+        defenders.forEach((defender) => {
+          const target = [...available]
+            .map((opponent) => ({
+              opponent,
+              score: Math.abs(opponent.x - defender.baseX) + this.distanceBetween(opponent, defender) * 0.35
+            }))
+            .sort((a, b) => a.score - b.score)[0]?.opponent;
+
+          if (target) {
+            marks.set(defender, target);
+            available.delete(target);
+          }
+        });
+
+        return marks;
+      }
+
+      hasInvadedDefensiveZone(opponent, defendingTeam) {
+        const ownGoal = this.getOwnGoalPoint(defendingTeam);
+        const distanceToGoal = this.distanceBetween(opponent, ownGoal);
+        const defensiveDepth = defendingTeam.attacksDown
+          ? opponent.y < 36
+          : opponent.y > 64;
+
+        return defensiveDepth || distanceToGoal < 36;
+      }
+
+      findMarkTarget(player) {
+        const opponents = this.getOpponentTeam(player.team).players;
+        const candidates = opponents
+          .filter((opponent) => opponent !== this.possession)
+          .map((opponent) => ({
+            opponent,
+            distance: this.distanceBetween(player, opponent),
+            baseDistance: this.distanceBetween({ x: player.baseX, y: player.baseY }, opponent)
+          }))
+          .filter((item) => item.distance < 20 || item.baseDistance < 16)
+          .sort((a, b) => a.distance + a.baseDistance * 0.35 - (b.distance + b.baseDistance * 0.35));
+
+        return candidates[0]?.opponent || null;
+      }
+
+      calculatePressure() {
+        const allPlayers = this.teams.flatMap((team) => team.players);
+
+        allPlayers.forEach((player) => {
+          const opponents = allPlayers.filter((candidate) => candidate.team !== player.team);
+          const nearest = opponents
+            .map((opponent) => ({ opponent, distance: player.distanceTo(opponent) }))
+            .sort((a, b) => a.distance - b.distance)[0];
+
+          player.marker = nearest?.opponent || null;
+          player.pressure = nearest ? this.clamp(1 - nearest.distance / 18, 0, 1) : 0;
+        });
+      }
+
+      getNearestPlayers(players, target, amount) {
+        return [...players]
+          .sort((a, b) => this.distanceBetween(a, target) - this.distanceBetween(b, target))
+          .slice(0, amount);
+      }
+
+      getOpponentTeam(team) {
+        return this.teams.find((candidate) => candidate !== team);
+      }
+
+      getGoalPoint(team) {
+        return { x: 50, y: team.attacksDown ? 100 : 0 };
+      }
+
+      getOwnGoalPoint(team) {
+        return { x: 50, y: team.attacksDown ? 0 : 100 };
+      }
+
+      isWideRole(role) {
+        return ["LE", "LD", "ME", "MD", "ALA", "PE", "PD"].includes(role);
+      }
+
+      isAttackingRole(role) {
+        return ["ATA", "CA", "PE", "PD", "ME", "MD", "ALA"].includes(role);
+      }
+
+      isDefensiveLineRole(role) {
+        return ["ZAG", "LE", "LD"].includes(role);
+      }
+
+      canPressBall(player) {
+        if (player.role === "GOL") return false;
+        if (this.isDefensiveLineRole(player.role) && !this.hasInvadedDefensiveZone(this.possession, player.team)) return false;
+        return this.distanceBetween(player, this.possession) < 34;
+      }
+
+      isInShotZone(player) {
+        return this.distanceBetween(player, this.getGoalPoint(player.team)) < 28;
+      }
+
+      normalizedVector(from, to) {
+        const dx = to.x - from.x;
+        const dy = to.y - from.y;
+        const distance = Math.hypot(dx, dy) || 1;
+        return { x: dx / distance, y: dy / distance };
+      }
+
+      pointBetween(from, to, amount) {
+        return {
+          x: from.x + (to.x - from.x) * amount,
+          y: from.y + (to.y - from.y) * amount
+        };
+      }
+
+      distanceBetween(a, b) {
+        return Math.hypot(a.x - b.x, a.y - b.y);
+      }
+
+      clamp(value, min, max) {
+        return Math.max(min, Math.min(max, value));
+      }
+
+      forwardValue(player, team) {
+        const direction = team.attacksDown ? 1 : -1;
+        const progress = direction === 1 ? player.y : 100 - player.y;
+        return 0.78 + progress / 180;
+      }
+
+      pickWeighted(items) {
+        const total = items.reduce((sum, item) => sum + item.weight, 0);
+        let roll = Math.random() * total;
+
+        for (const item of items) {
+          roll -= item.weight;
+          if (roll <= 0) return item.player;
+        }
+
+        return items[items.length - 1].player;
+      }
+
+      updatePossession(player, animate) {
+        const previous = this.possession;
+        this.possession = player;
+        if (previous && previous.team !== player.team) {
+          previous.team.players.forEach((member) => {
+            member.setTarget({ x: member.baseX, y: member.baseY });
+          });
+        }
+        this.teams.forEach((team) => {
+          team.players.forEach((member) => member.element.classList.toggle("has-ball", member === player));
+        });
+        this.calculatePressure();
+        this.updateBall(animate);
+        this.updateStatus();
+      }
+
+      updateBall(animate = true) {
+        this.ball.style.transitionDuration = animate ? "560ms" : "0ms";
+        this.ball.style.left = `${this.possession.x}%`;
+        this.ball.style.top = `${this.possession.y}%`;
+
+        if (!animate) {
+          window.requestAnimationFrame(() => {
+            this.ball.style.transitionDuration = "560ms";
+          });
+        }
+      }
+
+      updateScore() {
+        this.score.textContent = `${this.scoreBlue} x ${this.scoreRed}`;
+      }
+
+      updateControls() {
+        const controlsByState = {
+          pre: [{ label: "Iniciar", action: () => this.start(), primary: true }],
+          playing: [{ label: "Pausar", action: () => this.pause(), primary: false }],
+          paused: [{ label: "Continuar", action: () => this.start(), primary: true }],
+          halftime: [{ label: "Iniciar 2o tempo", action: () => this.start(), primary: true }],
+          finished: [{ label: "Reiniciar", action: () => this.reset(), primary: true }]
+        };
+
+        this.controls.innerHTML = "";
+        controlsByState[this.state].forEach((control) => {
+          const button = document.createElement("button");
+          button.className = `btn${control.primary ? " primary" : ""}`;
+          button.type = "button";
+          button.textContent = control.label;
+          button.addEventListener("click", control.action);
+          this.controls.appendChild(button);
+        });
+      }
+
+      updateStatus(message) {
+        if (message) {
+          this.statusText.textContent = message;
+          return;
+        }
+        const pressure = Math.round(this.possession.pressure * 100);
+        this.statusText.textContent = `Posse: ${this.possession.team.name} ${this.possession.number} - marcado ${pressure}%`;
+        this.statusDot.className = `status-dot ${this.possession.team.colorName}`;
+      }
+
+      updateClock() {
+        let visibleMinute;
+
+        if (this.period === 1) {
+          visibleMinute = this.halfMinute <= 45
+            ? String(this.halfMinute).padStart(2, "0")
+            : `45+${this.halfMinute - 45}`;
+        } else {
+          visibleMinute = this.halfMinute <= 45
+            ? String(45 + this.halfMinute).padStart(2, "0")
+            : `90+${this.halfMinute - 45}`;
+        }
+
+        this.clock.textContent = `${visibleMinute}'`;
+      }
+
+      logBallMovement(passer, receiver) {
+        const result = passer.team === receiver.team ? "passe certo" : "erro de passe";
+        const message = `${result}: ${passer.team.name} ${passer.number} (${passer.role}) -> ${receiver.team.name} ${receiver.number} (${receiver.role})`;
+        const type = passer.team === receiver.team ? passer.team.colorName : "turnover";
+        console.log(`[${this.clock.textContent}] ${message}`);
+        this.addEventLog(this.clock.textContent, message, type);
+      }
+
+      logCarry(player) {
+        const direction = player.team.attacksDown ? "avancou" : "subiu";
+        const pressure = Math.round(player.pressure * 100);
+        const message = `${player.team.name} ${player.number} (${player.role}) ${direction} com a bola - marcado ${pressure}%`;
+        console.log(`[${this.clock.textContent}] conducao: ${message}`);
+        this.addEventLog(this.clock.textContent, message, player.team.colorName);
+      }
+
+      addEventLog(time, message, type = "system") {
+        this.logEntries.unshift({ time, message, type });
+        this.logEntries = this.logEntries.slice(0, 40);
+        this.renderEventLog();
+      }
+
+      clearEventLog() {
+        this.logEntries = [];
+        this.renderEventLog();
+      }
+
+      renderEventLog() {
+        this.eventLog.innerHTML = "";
+        this.logEntries.forEach((entry) => {
+          const item = document.createElement("li");
+          const time = document.createElement("time");
+          const text = document.createElement("span");
+
+          item.className = entry.type;
+          time.textContent = entry.time;
+          text.textContent = entry.message;
+
+          item.append(time, text);
+          this.eventLog.appendChild(item);
+        });
+
+        const total = this.logEntries.length;
+        this.logCount.textContent = `${total} ${total === 1 ? "lance" : "lances"}`;
+      }
+    }
+
+    document.addEventListener("DOMContentLoaded", () => {
+      window.tacticsGame = new Game();
+    });
+  </script>
+</body>
+</html>
