@@ -936,7 +936,7 @@
     </div>
   </div>
 
-  <script>
+  <script type="text/plain" id="legacy-game-source">
     const TEAMS_CONFIG = [
       {
         id: "time-vermelho",
@@ -5525,5 +5525,7 @@
       window.tacticsGame = new Game();
     });
   </script>
+  <script src="src/match-engine.js"></script>
+  <script src="src/browser-game-adapter.js"></script>
 </body>
 </html>

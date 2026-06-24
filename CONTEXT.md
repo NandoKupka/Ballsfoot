@@ -2,7 +2,7 @@
 
 ## Project Shape
 
-Ballsfoot is a local, browser-only football tactics simulator implemented as a single `index.html` file. The app has no build step, package manager, backend, or persistence layer. Opening the HTML file is enough to run the current experience.
+Ballsfoot is a local, browser-only football tactics simulator with a directly opened `index.html` entry point and plain JavaScript modules under `src/`. The app has no build step, package manager, backend, or persistence layer.
 
 The current product surface is a live match simulator: two teams line up in a 4-4-2, the ball moves between players, the score and clock advance, and important actions are shown in a timeline with copyable hidden logs.
 
@@ -15,6 +15,8 @@ The current product surface is a live match simulator: two teams line up in a 4-
 - Lineup assignment: the allocation of players to formation slots. Higher-overall players claim compatible preferred slots first; unassigned players fill the remaining slots.
 - Formation: a set of tactical slots, each defined by an on-field role and base position. The only implemented formation is `4-4-2`.
 - Possession: the current player carrying the ball. Many tactical calculations are centered on the possession holder.
+- Ball state: the ball's current lifecycle state: controlled by a player, travelling toward a target, loose after a deflection, or out of play. A travelling or loose ball has no possession holder.
+- Simulation time: continuous elapsed time advanced through fixed internal steps. Match-clock time is derived from simulation time, while playback speed controls how quickly simulation time is consumed.
 - Tactical context: a derived snapshot for one team: phase, intent, pressure zone, ball side, line centers, mentality, and defensive line.
 - Support option: a nearby teammate positioned to give the possession holder a safe short pass and form a small triangle around the ball.
 - Cover shadow: a defender positioned between the possession holder and a likely receiver to close a passing lane without abandoning the team block.
@@ -28,7 +30,7 @@ The current product surface is a live match simulator: two teams line up in a 4-
 
 ## Match State
 
-`Game.state` uses these states:
+`MatchEngine.state` uses these states:
 
 - `pre`: match is ready but not running.
 - `playing`: action and movement loops are active.
@@ -37,11 +39,11 @@ The current product surface is a live match simulator: two teams line up in a 4-
 - `halftime`: first period is complete and the second period can start.
 - `finished`: full time is complete and reset is available.
 
-The match clock is derived from `period`, `halfMinute`, and randomly drawn stoppage time for each half. The visual clock shows first-half minutes as `00'` through `45+N'` and second-half minutes as `45'` through `90+N'`.
+The match clock is derived from continuous elapsed match time, the current period, and seeded stoppage time for each half. The visual clock shows first-half minutes as `00'` through `45+N'` and second-half minutes as `45'` through `90+N'`.
 
 ## Tactical Model
 
-The simulator is rule-weighted rather than physics-accurate. It uses deterministic geometry plus random weighted choices to create plausible football sequences.
+The simulator is rule-weighted rather than physics-accurate. It uses deterministic geometry, seeded random weighted choices, and fixed simulation steps to create plausible football sequences.
 
 Important tactical concepts:
 
@@ -62,27 +64,25 @@ The page has three main columns:
 - Match panel with scorebar, field, controls, speed slider, status, and timeline.
 - Away team panel.
 
-The field uses percentage coordinates from `0` to `100`. Player tokens and the ball are positioned by CSS custom properties or direct percentage styles. The app exposes the live `Game` instance at `window.tacticsGame` for debugging.
+The field uses percentage coordinates from `0` to `100`. Player tokens and the ball are positioned by CSS custom properties or direct percentage styles. The app exposes the live `BrowserGameAdapter` instance at `window.tacticsGame`; its headless motor is available at `window.tacticsGame.engine`.
 
 ## Code Organization
 
-All current behavior lives in the inline script:
+Runtime behavior is divided across two modules:
 
-- `TEAMS_CONFIG`: team identity, colors, default formation, and player ratings.
-- `Player`: player token state, DOM element, position updates, target movement, and display metadata.
-- `Team`: team construction, formation application, panel rendering, and mounting players into the field.
-- `Game`: orchestration of match state, timing, tactical rules, movement, decisions, logging, controls, and rendering.
+- `src/match-engine.js`: headless match state, fixed-step timing, formations, movement, tactical decisions, ball lifecycle, scoring, statistics, and domain events.
+- `src/browser-game-adapter.js`: team configuration, DOM creation, controls, animation loop, rendering, timeline, modal, and exports.
 
-The CSS and HTML are also inline. Future changes should keep edits focused unless the task explicitly asks to split files or introduce tooling.
+The CSS and HTML remain inline in `index.html`, which loads the two plain scripts and continues to work when opened directly.
 
 ## Current Constraints
 
 - Browser-only JavaScript; no dependencies are currently installed.
-- Randomness comes from `Math.random`, so simulations are not reproducible by seed.
-- There is no automated test suite yet.
+- Match randomness is generated from a seed, so headless simulations are reproducible.
+- Automated tests use Node's built-in test runner and execute with `node --test`.
 - The current repository has only one app context.
-- `index.html` contains existing local modifications; preserve unrelated user changes.
+- The legacy inline simulation source remains embedded but inert while the extracted engine and adapter are validated.
 
 ## Development Notes
 
-For local development, prefer simple browser verification first. If automated verification is added later, likely high-value targets are pure tactical helpers, seeded match simulations, and DOM smoke tests for state transitions.
+For local development, run `node --test`, then open `index.html` directly for visual verification. High-value automated targets are engine behavior through `command`, `advance`, `getSnapshot`, and `drainEvents`, plus browser-adapter smoke tests.
