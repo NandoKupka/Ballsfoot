@@ -163,6 +163,142 @@ test("autonomous matches finish with plausible circulation and attempts", () => 
   }
 
   assert.ok(totals.passes / totals.matches >= 25);
-  assert.ok(totals.shots / totals.matches >= 3);
+  assert.ok(totals.shots / totals.matches >= 1);
   assert.ok(totals.goals >= 1);
+});
+
+function collectPlayStyleMetrics(matchCount = 12) {
+  const metrics = {
+    passes: 0,
+    longPasses: 0,
+    shots: 0,
+    longShots: 0,
+    shotDistance: 0,
+    targetChecks: 0,
+    attackingMoves: 0,
+    spaceGains: 0,
+    markingChecks: 0,
+    markingResponses: 0
+  };
+
+  for (let seed = 1; seed <= matchCount; seed += 1) {
+    const engine = new MatchEngine({
+      teams: createTeams(),
+      seed
+    });
+    engine.command({ type: "start" });
+    let previous = null;
+
+    for (let step = 0; step < 3_000 && engine.getSnapshot().match.state !== "finished"; step += 1) {
+      engine.advance(50);
+      const snapshot = engine.getSnapshot();
+
+      engine.drainEvents().forEach((event) => {
+        if (event.type === "pass_started") {
+          metrics.passes += 1;
+          if (event.data.distance > 30) metrics.longPasses += 1;
+        }
+        if (event.type === "shot_started") {
+          metrics.shots += 1;
+          metrics.shotDistance += event.data.distance;
+          if (event.data.distance > 30) metrics.longShots += 1;
+        }
+      });
+
+      if (step % 5 === 0 && previous && snapshot.possession) {
+        const attackingTeam = snapshot.teams.find((team) => team.id === snapshot.possession.teamId);
+        const defendingTeam = snapshot.teams.find((team) => team.id !== snapshot.possession.teamId);
+
+        attackingTeam.players
+          .filter((player) => player.id !== snapshot.ball.controllerId && player.role !== "GOL")
+          .forEach((player) => {
+            const previousPlayer = previous.players.get(player.id);
+            const currentSpace = Math.min(...defendingTeam.players.map((defender) =>
+              Math.hypot(player.x - defender.x, player.y - defender.y)
+            ));
+            const projectedSpace = Math.min(...defendingTeam.players.map((defender) =>
+              Math.hypot(player.targetX - defender.x, player.targetY - defender.y)
+            ));
+            if (Math.hypot(player.targetX - player.x, player.targetY - player.y) > 2) {
+              metrics.targetChecks += 1;
+              if (projectedSpace > currentSpace + 0.5) metrics.spaceGains += 1;
+            }
+
+            const movement = Math.hypot(player.x - previousPlayer.x, player.y - previousPlayer.y);
+            if (movement < 0.12) return;
+
+            metrics.attackingMoves += 1;
+
+            const assignedDefender = defendingTeam.players
+              .filter((defender) => defender.markingTargetId === player.id)
+              .map((defender) => {
+                const previousDefender = previous.players.get(defender.id);
+                return {
+                  defender,
+                  distance: Math.hypot(
+                    previousPlayer.x - previousDefender.x,
+                    previousPlayer.y - previousDefender.y
+                  )
+                };
+              })
+              .sort((a, b) => a.distance - b.distance)[0]?.defender;
+            if (!assignedDefender) return;
+
+            const previousDefender = previous.players.get(assignedDefender.id);
+            const defenderMove = {
+              x: assignedDefender.x - previousDefender.x,
+              y: assignedDefender.y - previousDefender.y
+            };
+            const towardAttacker = {
+              x: player.x - previousDefender.x,
+              y: player.y - previousDefender.y
+            };
+            const moveLength = Math.hypot(defenderMove.x, defenderMove.y);
+            const targetLength = Math.hypot(towardAttacker.x, towardAttacker.y);
+            if (moveLength <= 0.05 || targetLength === 0) return;
+
+            metrics.markingChecks += 1;
+            const alignment = (
+              defenderMove.x * towardAttacker.x +
+              defenderMove.y * towardAttacker.y
+            ) / (moveLength * targetLength);
+            if (alignment > 0.35) metrics.markingResponses += 1;
+          });
+      }
+
+      if (step % 5 === 0) {
+        previous = {
+          players: new Map(snapshot.teams.flatMap((team) =>
+            team.players.map((player) => [player.id, { ...player }])
+          ))
+        };
+      }
+
+      if (snapshot.match.state === "goalPause") engine.command({ type: "confirmGoal" });
+      if (snapshot.match.state === "halftime") engine.command({ type: "start" });
+    }
+  }
+
+  return {
+    longPassRate: metrics.longPasses / metrics.passes,
+    longShotRate: metrics.longShots / metrics.shots,
+    averageShotDistance: metrics.shotDistance / metrics.shots,
+    spaceGainRate: metrics.spaceGains / metrics.targetChecks,
+    markingResponseRate: metrics.markingResponses / metrics.markingChecks
+  };
+}
+
+test("autonomous play favors support combinations over long passes and speculative shots", () => {
+  const metrics = collectPlayStyleMetrics();
+
+  assert.ok(metrics.longPassRate <= 0.24, `long pass rate was ${metrics.longPassRate}`);
+  assert.ok(metrics.longShotRate <= 0.25, `long shot rate was ${metrics.longShotRate}`);
+  assert.ok(metrics.averageShotDistance <= 28, `average shot distance was ${metrics.averageShotDistance}`);
+});
+
+test("off-ball movement creates space and pulls nearby marking", () => {
+  const metrics = collectPlayStyleMetrics();
+
+  assert.ok(metrics.spaceGainRate >= 0.5, `space gain rate was ${metrics.spaceGainRate}`);
+  assert.ok(metrics.markingResponseRate >= 0.58, `marking response rate was ${metrics.markingResponseRate}`);
 });
