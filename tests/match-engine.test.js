@@ -189,6 +189,75 @@ test("each canonical attribute influences its matching action group", () => {
   assert.ok(highDefensiveLaneSafety < lowDefensiveLaneSafety);
 });
 
+test("goalkeepers stay close to goal during normal play and only close down a clear one-on-one", () => {
+  const engine = new MatchEngine({
+    teams: createTeams(),
+    seed: 31,
+    autonomous: false
+  });
+  const defendingTeam = engine.teams[0];
+  const goalkeeper = defendingTeam.players.find((player) => player.role === "GOL");
+  const attackingTeam = engine.teams[1];
+  const attacker = attackingTeam.players.find((player) => player.role === "ATA");
+
+  const ownCarrier = defendingTeam.players.find((player) => player.role === "MC");
+  engine.setBallController(ownCarrier);
+  engine.updateTacticalTargets();
+  assert.ok(Math.abs(goalkeeper.targetX - 50) <= 2.5);
+  assert.ok(Math.abs(goalkeeper.targetY - goalkeeper.baseY) <= 2.2);
+
+  attacker.x = 50;
+  attacker.y = 72;
+  defendingTeam.players
+    .filter((player) => player.role !== "GOL")
+    .forEach((player, index) => {
+      player.x = index % 2 ? 12 : 88;
+      player.y = 55;
+    });
+  engine.setBallController(attacker);
+  engine.updateTacticalTargets();
+
+  assert.equal(engine.isGoalkeeperOneOnOne(defendingTeam, attacker), true);
+  assert.ok(goalkeeper.targetY < goalkeeper.baseY - 4);
+  assert.ok(goalkeeper.targetY >= 84.5);
+  assert.ok(goalkeeper.targetX >= 25.5 && goalkeeper.targetX <= 74.5);
+
+  const coveringDefender = defendingTeam.players.find((player) => player.role === "ZAG");
+  coveringDefender.x = 50;
+  coveringDefender.y = 84;
+  engine.updateTacticalTargets();
+
+  assert.equal(engine.isGoalkeeperOneOnOne(defendingTeam, attacker), false);
+  assert.ok(Math.abs(goalkeeper.targetY - goalkeeper.baseY) <= 0.35);
+});
+
+test("goalkeepers never leave their penalty area", () => {
+  for (let seed = 1; seed <= 8; seed += 1) {
+    const engine = new MatchEngine({
+      teams: createTeams(),
+      seed
+    });
+    engine.command({ type: "start" });
+
+    for (let step = 0; step < 3_000 && engine.getSnapshot().match.state !== "finished"; step += 1) {
+      engine.advance(50);
+      const snapshot = engine.getSnapshot();
+
+      snapshot.teams.forEach((team) => {
+        const goalkeeper = team.players.find((player) => player.role === "GOL");
+        assert.ok(goalkeeper.x >= 25.5 && goalkeeper.x <= 74.5);
+        assert.ok(team.attacksDown
+          ? goalkeeper.y >= 3 && goalkeeper.y <= 15.5
+          : goalkeeper.y >= 84.5 && goalkeeper.y <= 97
+        );
+      });
+
+      if (snapshot.match.state === "goalPause") engine.command({ type: "confirmGoal" });
+      if (snapshot.match.state === "halftime") engine.command({ type: "start" });
+    }
+  }
+});
+
 test("fixed-step simulation produces the same result for different frame chunks", () => {
   const options = {
     teams: createTeams(),

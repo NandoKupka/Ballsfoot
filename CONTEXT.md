@@ -60,6 +60,7 @@ Important tactical concepts:
 - Off-ball movement, decision speed, support selection, and composure use intelligence.
 - Marking, pressure, lane closure, and interceptions combine defense and intelligence.
 - Shots combine technique and intelligence. Goalkeepers combine defense and intelligence when attempting saves.
+- Goalkeepers normally stay close to goal and advance only slightly with build-up. They close down a carrier only on a clear one-on-one and are always constrained to their own penalty area.
 - Counter-attacks and post-loss press are temporary team states after possession changes.
 
 ## UI Model

@@ -14,6 +14,11 @@
   const DEFAULT_FIXED_STEP_MS = 50;
   const DEFAULT_MATCH_CLOCK_RATE = 120;
   const HALF_DURATION_MS = 45 * 60 * 1000;
+  const PENALTY_AREA = {
+    xMin: 25.5,
+    xMax: 74.5,
+    depth: 15.5
+  };
   const FORMATION_442 = [
     { role: "GOL", x: 50, y: 91 },
     { role: "LE", x: 18, y: 73 },
@@ -641,8 +646,14 @@
         team.players.forEach((player) => {
           if (player.role === "GOL") {
             player.markingTargetId = null;
-            player.targetX = this.clamp(50 + (this.ball.x - 50) * 0.08, 45, 55);
-            player.targetY = player.baseY + direction * this.clamp(ballProgress * 0.025, 0, 4);
+            const goalkeeperTarget = this.getGoalkeeperTarget(
+              player,
+              team,
+              inPossession,
+              carrier
+            );
+            player.targetX = goalkeeperTarget.x;
+            player.targetY = goalkeeperTarget.y;
             return;
           }
 
@@ -690,6 +701,58 @@
           player.targetY = this.clamp(player.targetY * 0.18 + defensiveTarget.y * 0.82, 5, 95);
         });
       });
+    }
+
+    getGoalkeeperTarget(goalkeeper, team, inPossession, carrier) {
+      const direction = team.attacksDown ? 1 : -1;
+      const ownGoal = this.getOwnGoalPoint(team);
+
+      if (!inPossession && this.isGoalkeeperOneOnOne(team, carrier)) {
+        const carrierDistance = this.distance(carrier, ownGoal);
+        const closingDistance = this.clamp(carrierDistance * 0.58, 6.5, PENALTY_AREA.depth - 0.5);
+        const towardCarrier = this.normalized(ownGoal, carrier);
+        return this.clampGoalkeeperToPenaltyArea(team, {
+          x: ownGoal.x + towardCarrier.x * closingDistance,
+          y: ownGoal.y + towardCarrier.y * closingDistance
+        });
+      }
+
+      const ballProgress = this.getAttackProgress(this.ball, team);
+      const buildUpAdvance = inPossession
+        ? this.clamp(0.5 + ballProgress * 0.018, 0.5, 2.2)
+        : 0.35;
+      const horizontalFollow = inPossession ? 0.045 : 0.06;
+      return this.clampGoalkeeperToPenaltyArea(team, {
+        x: this.clamp(50 + (this.ball.x - 50) * horizontalFollow, 47.5, 52.5),
+        y: goalkeeper.baseY + direction * buildUpAdvance
+      });
+    }
+
+    isGoalkeeperOneOnOne(team, carrier) {
+      if (!carrier || carrier.teamId === team.id || carrier.role === "GOL") return false;
+
+      const ownGoal = this.getOwnGoalPoint(team);
+      const carrierGoalDistance = this.distance(carrier, ownGoal);
+      if (carrierGoalDistance > 30 || carrier.x < 20 || carrier.x > 80) return false;
+
+      const outfieldPlayers = team.players.filter((player) => player.role !== "GOL");
+      const hasCloseChallenge = outfieldPlayers.some((player) => this.distance(player, carrier) <= 5.5);
+      if (hasCloseChallenge) return false;
+
+      const hasGoalSideCover = outfieldPlayers.some((player) =>
+        this.distance(player, ownGoal) < carrierGoalDistance - 0.75 &&
+        this.distanceToSegment(player, carrier, ownGoal) < 7
+      );
+      return !hasGoalSideCover;
+    }
+
+    clampGoalkeeperToPenaltyArea(team, point) {
+      const yMin = team.attacksDown ? 3 : 100 - PENALTY_AREA.depth;
+      const yMax = team.attacksDown ? PENALTY_AREA.depth : 97;
+      return {
+        x: this.clamp(point.x, PENALTY_AREA.xMin, PENALTY_AREA.xMax),
+        y: this.clamp(point.y, yMin, yMax)
+      };
     }
 
     getOffBallTarget(player, team, carrier) {
@@ -773,7 +836,7 @@
             ? goalThreat * (this.isWideMidfielder(player) || player.role === "ALA" ? 0.58 : 0.48)
             : goalThreat * 0.06;
           const wideAdvanceBias = this.isWideMidfielder(player) || player.role === "ALA"
-            ? usefulProgress * 0.58
+            ? usefulProgress * 0.62
             : (this.isFullback(player) ? usefulProgress * 0.2 : 0);
           const decisionNoise = (this.random.next() - 0.5) *
             (100 - player.attributes.intelligence) / 100 *
@@ -999,6 +1062,11 @@
           player.matchStats.distanceCovered += travelledDistance;
           player.x = this.clamp(player.x, 4, 96);
           player.y = this.clamp(player.y, 3, 97);
+          if (player.role === "GOL") {
+            const goalkeeperPosition = this.clampGoalkeeperToPenaltyArea(team, player);
+            player.x = goalkeeperPosition.x;
+            player.y = goalkeeperPosition.y;
+          }
         });
       });
     }
@@ -1403,7 +1471,7 @@
 
     getRoleAttackPush(role) {
       if (role === "ZAG") return 4;
-      if (role === "LE" || role === "LD") return 21;
+      if (role === "LE" || role === "LD") return 22;
       if (role === "VOL") return 7;
       if (role === "MC") return 13;
       if (role === "ME" || role === "MD") return 28;
