@@ -1,3 +1,3 @@
 # Explicit 4-4-2 shape rules
 
-Ballsfoot models 4-4-2 movement with explicit support, cover, and lane-closing responsibilities instead of relying only on individual target scoring. The trade-off is a little more tactical code inside the simulator, but the match logs can now explain whether the team shape is working: support options near the carrier, vertical stretch, striker separation, and fullback coverage are measurable signals.
+Ballsfoot models 4-4-2 movement with explicit collective context layered over individual target scoring. Each tactical update identifies the ball side, active fullback, supporting and holding midfielders, complementary forward roles, pressing player, crossing occupation, and short transition phase. The trade-off is more tactical code inside the simulator, but positions remain organic while collective responsibilities and realism signals stay measurable.

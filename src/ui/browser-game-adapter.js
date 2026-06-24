@@ -250,6 +250,10 @@
             ? `${player?.name || "Jogador"} prepara o passe de primeira.`
             : `${player?.name || "Jogador"} domina a bola.`
         },
+        offside: {
+          title: "Impedimento",
+          detail: `${player?.name || "Jogador"} participa da jogada alem da linha do penultimo adversario.`
+        },
         pass_intercepted: {
           title: "Interceptacao",
           detail: `${player?.name || "Defensor"} corta a trajetoria e assume a posse.`
@@ -317,7 +321,7 @@
       this.allLogEntries.push(normalized);
       this.currentMatchEntries.push(normalized);
 
-      if (["goal", "shot_started", "shot_saved", "pass_intercepted", "halftime", "fulltime"].includes(normalized.kind)) {
+      if (["goal", "shot_started", "shot_saved", "pass_intercepted", "offside", "halftime", "fulltime"].includes(normalized.kind)) {
         this.keyMomentEntries.push(normalized);
       }
 
@@ -405,7 +409,7 @@
       return [
         `${team.name} ${player.number} - ${player.name} (${player.role}) OVR ${player.overall}`,
         `FIS ${attributes.physical} | TEC ${attributes.technique} | INT ${attributes.intelligence} | DEF ${attributes.defense}`,
-        `Partida: ${stats.passesCompleted}/${stats.passesAttempted} passes | ${stats.oneTouchPasses} de primeira | ${stats.shots} chutes | ${stats.goals} gols | ${stats.interceptions} interceptacoes`
+        `Partida: ${stats.passesCompleted}/${stats.passesAttempted} passes | ${stats.oneTouchPasses} de primeira | ${stats.offsides} impedimentos | ${stats.shots} chutes | ${stats.goals} gols | ${stats.interceptions} interceptacoes`
       ].join("\n");
     }
 

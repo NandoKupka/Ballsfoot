@@ -22,6 +22,14 @@ The current product surface is a live match simulator: two teams line up in a 4-
 - Simulation time: continuous elapsed time advanced through fixed internal steps. Match-clock time is derived from simulation time, while playback speed controls how quickly simulation time is consumed.
 - Tactical context: a derived snapshot for one team: phase, intent, pressure zone, ball side, line centers, mentality, and defensive line.
 - Support option: a nearby teammate positioned to give the possession holder a safe short pass and form a small triangle around the ball.
+- Compact block: the team without the ball arranged as two connected lines of four with two forwards ahead, prioritizing central protection over individual pursuit.
+- Ball-side shift: the coordinated lateral movement of the defensive block toward the side containing the ball while far-side players narrow toward the center.
+- Active fullback: the fullback temporarily released to support or overlap on the ball side; the opposite fullback remains balanced behind the attack.
+- Midfield balance: the temporary division of the two central midfielders into a supporting player near the ball and a holding player protecting the center.
+- Complementary forward movement: one forward approaches the ball or channel while the other preserves depth or attacks behind the defense.
+- Transition: the short phase immediately after possession changes, expressed as a counterattack by the recovering team and a counterpress by the team that lost the ball.
+- Offside position: a receiving position in the opponent's half beyond both the ball and the second-last opponent at the instant a teammate plays the ball.
+- Offside offense: active involvement by the intended receiver from an offside position, resulting in a defending-team restart.
 - First-time pass: an immediate redirection of a received ball without establishing a new controlled-possession phase. Intelligence governs whether the player recognizes the option in time; technique governs execution.
 - Wall pass: a first-time return pass to the teammate who supplied the ball, allowing that teammate to continue the attacking move.
 - Cover shadow: a defender positioned between the possession holder and a likely receiver to close a passing lane without abandoning the team block.
@@ -53,11 +61,11 @@ The simulator is rule-weighted rather than physics-accurate. It uses determinist
 
 Important tactical concepts:
 
-- Defensive line height and compactness keep the team shape coherent.
+- Defensive line height, compactness, central protection, and ball-side shifting keep the team shape coherent.
 - Build-up rules prefer center backs, fullbacks, the holding midfielder, and playmaker options.
 - Passing and receiving use technique for execution and intelligence for option selection, timing, and positioning.
 - Final-third actions can become through balls or crosses before a shot.
-- Offside is modeled using attacking progress, defensive line progress, ball position, and eligibility.
+- Offside is judged from the frozen positions of the receiver, ball, and second-last opponent when the pass is played.
 - Running speed and acceleration use physical; carries and dribbles combine physical and technique.
 - Off-ball movement, decision speed, support selection, and composure use intelligence.
 - Marking, pressure, lane closure, and interceptions combine defense and intelligence.

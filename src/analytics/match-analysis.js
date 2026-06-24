@@ -61,6 +61,7 @@
       passEvents: 0,
       oneTouchPasses: 0,
       combinations: 0,
+      offsides: 0,
       shotDistance: 0,
       shotEvents: 0
     };
@@ -82,6 +83,7 @@
           passesAttempted: 0,
           passesCompleted: 0,
           oneTouchPasses: 0,
+          offsides: 0,
           possessionMatchMs: 0
         };
         aggregate.matches += 1;
@@ -90,6 +92,7 @@
         aggregate.passesAttempted += team.stats.passesAttempted;
         aggregate.passesCompleted += team.stats.passesCompleted;
         aggregate.oneTouchPasses += team.stats.oneTouchPasses;
+        aggregate.offsides += team.stats.offsides;
         aggregate.possessionMatchMs += team.stats.possessionMatchMs;
         teamAggregates.set(team.id, aggregate);
 
@@ -115,6 +118,7 @@
             recoveries: 0,
             carries: 0,
             oneTouchPasses: 0,
+            offsides: 0,
             saves: 0
           };
           aggregatePlayer.matches += 1;
@@ -144,12 +148,14 @@
       totals.shots += team.shots;
       totals.passesAttempted += team.passesAttempted;
       totals.passesCompleted += team.passesCompleted;
+      totals.offsides += team.offsides;
       return {
         ...team,
         goalsPerMatch: round(team.goals / team.matches),
         shotsPerMatch: round(team.shots / team.matches),
         passCompletionRate: rate(team.passesCompleted, team.passesAttempted),
-        oneTouchPassesPerMatch: round(team.oneTouchPasses / team.matches)
+        oneTouchPassesPerMatch: round(team.oneTouchPasses / team.matches),
+        offsidesPerMatch: round(team.offsides / team.matches)
       };
     });
 
@@ -178,6 +184,7 @@
       oneTouchPassRate: rate(totals.oneTouchPasses, totals.passEvents),
       oneTouchPassesPerMatch: round(totals.oneTouchPasses / matches),
       combinationsPerMatch: round(totals.combinations / matches),
+      offsidesPerMatch: round(totals.offsides / matches),
       averageShotDistance: round(totals.shotDistance / Math.max(totals.shotEvents, 1))
     };
 
@@ -206,8 +213,20 @@
       {
         metric: "shotsPerMatch",
         value: summary.shotsPerMatch,
-        status: summary.shotsPerMatch < 1 ? "warning" : "ok",
-        note: summary.shotsPerMatch < 1 ? "criacao de chances pode estar baixa" : "partidas produzem finalizacoes"
+        status: summary.shotsPerMatch < 1 || summary.shotsPerMatch > 20 ? "warning" : "ok",
+        note: summary.shotsPerMatch < 1
+          ? "criacao de chances pode estar baixa"
+          : (summary.shotsPerMatch > 20
+            ? "volume de finalizacoes pode estar alto demais"
+            : "partidas produzem finalizacoes")
+      },
+      {
+        metric: "goalsPerMatch",
+        value: summary.goalsPerMatch,
+        status: summary.goalsPerMatch > 6 ? "warning" : "ok",
+        note: summary.goalsPerMatch > 6
+          ? "volume de gols pode estar alto demais"
+          : "volume de gols permanece controlado"
       },
       {
         metric: "oneTouchPassRate",
@@ -218,6 +237,14 @@
           : (summary.oneTouchPassRate < 1
             ? "passes de primeira quase nao aparecem"
             : "passes de primeira aparecem de forma seletiva")
+      },
+      {
+        metric: "offsidesPerMatch",
+        value: summary.offsidesPerMatch,
+        status: summary.offsidesPerMatch > 8 ? "warning" : "ok",
+        note: summary.offsidesPerMatch > 8
+          ? "movimentos em profundidade estao gerando impedimentos demais"
+          : "linha de impedimento participa sem interromper excessivamente"
       }
     ];
   }

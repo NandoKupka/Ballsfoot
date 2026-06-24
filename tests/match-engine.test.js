@@ -106,6 +106,7 @@ test("overall is derived from the four attributes and players accumulate match s
     "distanceCovered",
     "goals",
     "interceptions",
+    "offsides",
     "oneTouchPasses",
     "passesAttempted",
     "passesCompleted",
@@ -317,6 +318,210 @@ test("the attacking team keeps its shape while a pass is travelling", () => {
   assert.equal(engine.ball.mode, "travelling");
   assert.equal(engine.ball.intendedReceiverId, receiver.id);
   assert.ok(receiver.targetY < receiver.y);
+});
+
+test("the attacking 4-4-2 staggers fullbacks, central midfielders, and forwards", () => {
+  const engine = new MatchEngine({
+    teams: createTeams(),
+    seed: 47,
+    autonomous: false
+  });
+  const team = engine.teams[0];
+  const carrier = team.players.find((player) => player.role === "ME");
+  carrier.x = 14;
+  carrier.y = 45;
+  engine.setBallController(carrier);
+  engine.updateTacticalTargets();
+  const context = engine.getCollectiveTacticalContext(team, true, carrier);
+
+  const leftBack = team.players.find((player) => player.role === "LE");
+  const rightBack = team.players.find((player) => player.role === "LD");
+  const centralMidfielders = team.players.filter((player) => ["VOL", "MC"].includes(player.role));
+  const forwards = team.players.filter((player) => player.role === "ATA");
+  const collectiveTarget = (player) => engine.getCollectiveAttackingTarget(
+    player,
+    team,
+    carrier,
+    context
+  );
+  const progress = (player) => engine.getAttackProgress(collectiveTarget(player), team);
+
+  assert.equal(team.tacticalState.activeFullbackId, leftBack.id);
+  assert.ok(progress(leftBack) >= progress(rightBack) + 10);
+  assert.ok(Math.abs(progress(centralMidfielders[0]) - progress(centralMidfielders[1])) >= 6);
+  assert.ok(Math.abs(progress(forwards[0]) - progress(forwards[1])) >= 8);
+});
+
+test("the defensive 4-4-2 shifts toward the ball and tucks in the far side", () => {
+  const engine = new MatchEngine({
+    teams: createTeams(),
+    seed: 49,
+    autonomous: false
+  });
+  const defendingTeam = engine.teams[0];
+  const attackingTeam = engine.teams[1];
+  const carrier = attackingTeam.players.find((player) => player.role === "MD");
+  carrier.x = 90;
+  carrier.y = 58;
+  engine.setBallController(carrier);
+  engine.updateTacticalTargets();
+
+  const farWideMidfielder = defendingTeam.players.find((player) => player.role === "ME");
+  const farFullback = defendingTeam.players.find((player) => player.role === "LE");
+  const centerBacks = defendingTeam.players.filter((player) => player.role === "ZAG");
+  const averageCenterBackTargetX = centerBacks.reduce((sum, player) => sum + player.targetX, 0) /
+    centerBacks.length;
+
+  assert.equal(defendingTeam.tacticalState.ballSide, "right");
+  assert.ok(Math.abs(farWideMidfielder.targetX - 50) < Math.abs(farWideMidfielder.baseX - 50));
+  assert.ok(Math.abs(farFullback.targetX - 50) < Math.abs(farFullback.baseX - 50));
+  assert.ok(averageCenterBackTargetX > 50);
+  defendingTeam.players
+    .filter((player) => player.markingTargetId)
+    .forEach((player) => {
+      const marked = engine.findPlayer(player.markingTargetId);
+      assert.ok(engine.distance(player, marked) <= 21);
+    });
+});
+
+test("crossing positions distribute runners while preserving defensive cover", () => {
+  const engine = new MatchEngine({
+    teams: createTeams(),
+    seed: 51,
+    autonomous: false
+  });
+  const team = engine.teams[0];
+  const carrier = team.players.find((player) => player.role === "ME");
+  carrier.x = 8;
+  carrier.y = 24;
+  engine.setBallController(carrier);
+  engine.updateTacticalTargets();
+  const context = engine.getCollectiveTacticalContext(team, true, carrier);
+
+  const forwards = team.players.filter((player) => player.role === "ATA");
+  const farWideMidfielder = team.players.find((player) => player.role === "MD");
+  const fullbacks = team.players.filter((player) => ["LE", "LD"].includes(player.role));
+  const collectiveTarget = (player) => engine.getCollectiveAttackingTarget(
+    player,
+    team,
+    carrier,
+    context
+  );
+  const progress = (player) => engine.getAttackProgress(collectiveTarget(player), team);
+
+  assert.ok(forwards.every((player) => progress(player) >= 84));
+  assert.ok(Math.abs(collectiveTarget(forwards[0]).x - collectiveTarget(forwards[1]).x) >= 6);
+  assert.ok(progress(farWideMidfielder) >= 82);
+  assert.ok(fullbacks.some((player) => progress(player) <= 64));
+});
+
+test("possession changes create short counter and counterpress phases", () => {
+  const engine = new MatchEngine({
+    teams: createTeams(),
+    seed: 53,
+    autonomous: false
+  });
+  engine.command({ type: "start" });
+  engine.advance(50);
+  const previousTeam = engine.getTeam(engine.possession.teamId);
+  const gainingTeam = engine.getOpponent(previousTeam);
+  const winner = gainingTeam.players.find((player) => player.role === "MC");
+
+  engine.setBallController(winner);
+  engine.updateTacticalTargets();
+
+  assert.equal(previousTeam.tacticalState.transition, "counterpress");
+  assert.equal(gainingTeam.tacticalState.transition, "counter");
+  assert.equal(previousTeam.tacticalState.phase, "counterpress");
+  assert.equal(gainingTeam.tacticalState.phase, "counterattack");
+
+  engine.simulationElapsedMs += 4_000;
+  engine.updateTacticalTargets();
+  assert.equal(previousTeam.tacticalState.transition, null);
+  assert.equal(gainingTeam.tacticalState.transition, null);
+});
+
+test("a backward pass acts as a trigger for opposing pressure", () => {
+  const engine = new MatchEngine({
+    teams: createTeams(),
+    seed: 54,
+    autonomous: false
+  });
+  const attackingTeam = engine.teams[0];
+  const defendingTeam = engine.teams[1];
+  const passer = engine.getController();
+  const receiver = attackingTeam.players.find((player) => player.role === "ZAG");
+  passer.x = 50;
+  passer.y = 50;
+  receiver.x = 50;
+  receiver.y = 70;
+
+  engine.performPass(receiver.id);
+  const context = engine.getCollectiveTacticalContext(defendingTeam, false, receiver);
+
+  assert.equal(context.pressTrigger, true);
+});
+
+test("offside is judged at the pass and restarts for the defending team", () => {
+  const engine = new MatchEngine({
+    teams: createTeams(),
+    seed: 55,
+    autonomous: false
+  });
+  const attackingTeam = engine.teams[0];
+  const defendingTeam = engine.teams[1];
+  const passer = engine.getController();
+  const receiver = attackingTeam.players.find((player) => player.role === "ATA");
+  passer.x = 50;
+  passer.y = 50;
+  receiver.x = 50;
+  receiver.y = 20;
+  defendingTeam.players.forEach((player, index) => {
+    player.x = 35 + index * 3;
+    player.y = player.role === "GOL" ? 5 : (index === 1 ? 25 : 35);
+  });
+
+  engine.command({ type: "start" });
+  engine.performPass(receiver.id);
+
+  assert.equal(engine.ball.mode, "out");
+  assert.equal(engine.ball.restartReason, "offside");
+  assert.equal(attackingTeam.stats.offsides, 1);
+  assert.equal(receiver.matchStats.offsides, 1);
+  const offsideEvent = engine.drainEvents().find((event) => event.type === "offside");
+  assert.equal(offsideEvent.data.playerId, receiver.id);
+  assert.ok(offsideEvent.data.playerProgress > offsideEvent.data.offsideLine);
+
+  engine.advance(600);
+  assert.equal(engine.possession.teamId, defendingTeam.id);
+  assert.notEqual(engine.getController().role, "GOL");
+});
+
+test("a receiver level with the second-last opponent or behind the ball is onside", () => {
+  const engine = new MatchEngine({
+    teams: createTeams(),
+    seed: 57,
+    autonomous: false
+  });
+  const attackingTeam = engine.teams[0];
+  const defendingTeam = engine.teams[1];
+  const passer = engine.getController();
+  const receiver = attackingTeam.players.find((player) => player.role === "ATA");
+  defendingTeam.players.forEach((player, index) => {
+    player.y = player.role === "GOL" ? 5 : (index === 1 ? 25 : 35);
+  });
+
+  passer.y = 50;
+  receiver.y = 25;
+  assert.equal(engine.getOffsidePosition(receiver, passer).isOffside, false);
+
+  passer.y = 20;
+  receiver.y = 25;
+  assert.equal(engine.getOffsidePosition(receiver, passer).isOffside, false);
+
+  passer.y = 65;
+  receiver.y = 60;
+  assert.equal(engine.getOffsidePosition(receiver, passer).isOffside, false);
 });
 
 test("goalkeepers stay close to goal during normal play and only close down a clear one-on-one", () => {

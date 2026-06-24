@@ -37,6 +37,7 @@ test("batch analysis produces deterministic team and player metrics", () => {
   assert.ok(first.summary.oneTouchPassRate > 0);
   assert.ok(first.summary.oneTouchPassRate <= 14);
   assert.ok(first.summary.combinationsPerMatch > 0);
+  assert.ok(first.summary.offsidesPerMatch >= 0);
   assert.ok(first.players.some((player) => player.passesAttempted > 0));
   assert.ok(first.players.some((player) => player.oneTouchPasses > 0));
   assert.ok(first.players.every((player) => player.attributes.physical >= 1));
@@ -47,6 +48,14 @@ test("batch analysis produces deterministic team and player metrics", () => {
   assert.ok(first.signals.some((signal) => signal.metric === "longPassRate"));
   assert.equal(
     first.signals.find((signal) => signal.metric === "oneTouchPassRate").status,
+    "ok"
+  );
+  assert.equal(
+    first.signals.find((signal) => signal.metric === "offsidesPerMatch").status,
+    "ok"
+  );
+  assert.equal(
+    first.signals.find((signal) => signal.metric === "goalsPerMatch").status,
     "ok"
   );
 });

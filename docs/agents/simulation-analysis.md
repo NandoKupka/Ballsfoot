@@ -14,7 +14,7 @@ node scripts\analyze-matches.js --matches 500 --seed 1 --output analysis\baselin
 
 The report includes:
 
-- aggregate goals, shots, passes, completion, long-pass rate, first-time passes, wall passes, and shot distance;
+- aggregate goals, shots, passes, completion, long-pass rate, first-time passes, wall passes, offsides, and shot distance;
 - team-level results;
 - every player's attributes and accumulated match statistics;
 - realism signals that highlight suspicious distributions.
