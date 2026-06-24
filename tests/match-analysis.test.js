@@ -33,11 +33,20 @@ test("batch analysis produces deterministic team and player metrics", () => {
   assert.equal(first.teams.length, 2);
   assert.equal(first.players.length, 22);
   assert.ok(first.summary.passesPerMatch > 0);
+  assert.ok(first.summary.oneTouchPassesPerMatch > 0);
+  assert.ok(first.summary.oneTouchPassRate > 0);
+  assert.ok(first.summary.oneTouchPassRate <= 14);
+  assert.ok(first.summary.combinationsPerMatch > 0);
   assert.ok(first.players.some((player) => player.passesAttempted > 0));
+  assert.ok(first.players.some((player) => player.oneTouchPasses > 0));
   assert.ok(first.players.every((player) => player.attributes.physical >= 1));
   assert.ok(first.players.every((player) => {
     const values = Object.values(player.attributes);
     return player.overall === Math.round(values.reduce((sum, value) => sum + value, 0) / values.length);
   }));
   assert.ok(first.signals.some((signal) => signal.metric === "longPassRate"));
+  assert.equal(
+    first.signals.find((signal) => signal.metric === "oneTouchPassRate").status,
+    "ok"
+  );
 });

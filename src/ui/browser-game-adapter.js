@@ -235,12 +235,20 @@
           detail: "A simulacao terminou."
         },
         pass_started: {
-          title: "Passe",
-          detail: `${player?.name || "Jogador"} procura ${receiver?.name || "um companheiro"}.`
+          title: event.data.combination
+            ? "Tabela"
+            : (event.data.oneTouch ? "Passe de primeira" : "Passe"),
+          detail: event.data.combination
+            ? `${player?.name || "Jogador"} devolve de primeira para ${receiver?.name || "o companheiro"}.`
+            : (event.data.oneTouch
+              ? `${player?.name || "Jogador"} redireciona de primeira para ${receiver?.name || "um companheiro"}.`
+              : `${player?.name || "Jogador"} procura ${receiver?.name || "um companheiro"}.`)
         },
         pass_completed: {
           title: "Passe completo",
-          detail: `${player?.name || "Jogador"} domina a bola.`
+          detail: event.data.continuedFirstTime
+            ? `${player?.name || "Jogador"} prepara o passe de primeira.`
+            : `${player?.name || "Jogador"} domina a bola.`
         },
         pass_intercepted: {
           title: "Interceptacao",
@@ -397,7 +405,7 @@
       return [
         `${team.name} ${player.number} - ${player.name} (${player.role}) OVR ${player.overall}`,
         `FIS ${attributes.physical} | TEC ${attributes.technique} | INT ${attributes.intelligence} | DEF ${attributes.defense}`,
-        `Partida: ${stats.passesCompleted}/${stats.passesAttempted} passes | ${stats.shots} chutes | ${stats.goals} gols | ${stats.interceptions} interceptacoes`
+        `Partida: ${stats.passesCompleted}/${stats.passesAttempted} passes | ${stats.oneTouchPasses} de primeira | ${stats.shots} chutes | ${stats.goals} gols | ${stats.interceptions} interceptacoes`
       ].join("\n");
     }
 

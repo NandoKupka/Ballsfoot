@@ -59,6 +59,8 @@
       passesCompleted: 0,
       longPasses: 0,
       passEvents: 0,
+      oneTouchPasses: 0,
+      combinations: 0,
       shotDistance: 0,
       shotEvents: 0
     };
@@ -79,6 +81,7 @@
           shots: 0,
           passesAttempted: 0,
           passesCompleted: 0,
+          oneTouchPasses: 0,
           possessionMatchMs: 0
         };
         aggregate.matches += 1;
@@ -86,6 +89,7 @@
         aggregate.shots += team.stats.shots;
         aggregate.passesAttempted += team.stats.passesAttempted;
         aggregate.passesCompleted += team.stats.passesCompleted;
+        aggregate.oneTouchPasses += team.stats.oneTouchPasses;
         aggregate.possessionMatchMs += team.stats.possessionMatchMs;
         teamAggregates.set(team.id, aggregate);
 
@@ -110,6 +114,7 @@
             interceptions: 0,
             recoveries: 0,
             carries: 0,
+            oneTouchPasses: 0,
             saves: 0
           };
           aggregatePlayer.matches += 1;
@@ -124,6 +129,8 @@
         if (event.type === "pass_started") {
           totals.passEvents += 1;
           if (event.data.distance > 30) totals.longPasses += 1;
+          if (event.data.oneTouch) totals.oneTouchPasses += 1;
+          if (event.data.combination) totals.combinations += 1;
         }
         if (event.type === "shot_started") {
           totals.shotEvents += 1;
@@ -141,7 +148,8 @@
         ...team,
         goalsPerMatch: round(team.goals / team.matches),
         shotsPerMatch: round(team.shots / team.matches),
-        passCompletionRate: rate(team.passesCompleted, team.passesAttempted)
+        passCompletionRate: rate(team.passesCompleted, team.passesAttempted),
+        oneTouchPassesPerMatch: round(team.oneTouchPasses / team.matches)
       };
     });
 
@@ -167,6 +175,9 @@
       passesPerMatch: round(totals.passesAttempted / matches),
       passCompletionRate: rate(totals.passesCompleted, totals.passesAttempted),
       longPassRate: rate(totals.longPasses, totals.passEvents),
+      oneTouchPassRate: rate(totals.oneTouchPasses, totals.passEvents),
+      oneTouchPassesPerMatch: round(totals.oneTouchPasses / matches),
+      combinationsPerMatch: round(totals.combinations / matches),
       averageShotDistance: round(totals.shotDistance / Math.max(totals.shotEvents, 1))
     };
 
@@ -197,6 +208,16 @@
         value: summary.shotsPerMatch,
         status: summary.shotsPerMatch < 1 ? "warning" : "ok",
         note: summary.shotsPerMatch < 1 ? "criacao de chances pode estar baixa" : "partidas produzem finalizacoes"
+      },
+      {
+        metric: "oneTouchPassRate",
+        value: summary.oneTouchPassRate,
+        status: summary.oneTouchPassRate > 14 || summary.oneTouchPassRate < 1 ? "warning" : "ok",
+        note: summary.oneTouchPassRate > 14
+          ? "passes de primeira podem estar automaticos demais"
+          : (summary.oneTouchPassRate < 1
+            ? "passes de primeira quase nao aparecem"
+            : "passes de primeira aparecem de forma seletiva")
       }
     ];
   }

@@ -98,7 +98,11 @@
         contactedPlayerIds: [],
         passerId: null,
         shooterId: null,
-        goalChance: null
+        goalChance: null,
+        oneTouch: false,
+        oneTouchChain: 0,
+        combination: false,
+        passTrigger: null
       };
       this.prepareKickoff(this.teams[0]);
       this.updatePressure();
@@ -117,6 +121,7 @@
           passesAttempted: 0,
           passesCompleted: 0,
           passesMissed: 0,
+          oneTouchPasses: 0,
           shots: 0,
           goals: 0,
           turnovers: 0
@@ -216,6 +221,7 @@
         interceptions: 0,
         recoveries: 0,
         carries: 0,
+        oneTouchPasses: 0,
         saves: 0
       };
     }
@@ -375,6 +381,7 @@
           passesAttempted: 0,
           passesCompleted: 0,
           passesMissed: 0,
+          oneTouchPasses: 0,
           shots: 0,
           goals: 0,
           turnovers: 0
@@ -390,7 +397,7 @@
       this.emit("match_reset");
     }
 
-    performPass(receiverId) {
+    performPass(receiverId, options = {}) {
       const passer = this.getController();
       const receiver = this.findPlayer(receiverId);
       if (!passer || !receiver || passer.id === receiver.id || passer.teamId !== receiver.teamId) return false;
@@ -399,6 +406,10 @@
       const passingTeam = this.getTeam(passer.teamId);
       passingTeam.stats.passesAttempted += 1;
       passer.matchStats.passesAttempted += 1;
+      if (options.oneTouch) {
+        passingTeam.stats.oneTouchPasses += 1;
+        passer.matchStats.oneTouchPasses += 1;
+      }
       this.possession = null;
       Object.assign(this.ball, {
         mode: "travelling",
@@ -422,13 +433,20 @@
         contactedPlayerIds: [],
         passerId: passer.id,
         shooterId: null,
-        goalChance: null
+        goalChance: null,
+        oneTouch: Boolean(options.oneTouch),
+        oneTouchChain: options.oneTouch ? Number(options.oneTouchChain) || 1 : 0,
+        combination: Boolean(options.combination),
+        passTrigger: options.trigger || null
       });
       this.emit("pass_started", {
         teamId: passer.teamId,
         playerId: passer.id,
         receiverId: receiver.id,
-        distance
+        distance,
+        oneTouch: Boolean(options.oneTouch),
+        combination: Boolean(options.combination),
+        trigger: options.trigger || null
       });
       return true;
     }
@@ -467,6 +485,15 @@
           this.resolveShot();
         } else {
           const passer = this.findPlayer(this.ball.passerId);
+          const incomingPass = {
+            startX: this.ball.startX,
+            startY: this.ball.startY,
+            distance: this.ball.distance,
+            oneTouch: Boolean(this.ball.oneTouch),
+            oneTouchChain: this.ball.oneTouchChain || 0,
+            combination: Boolean(this.ball.combination),
+            trigger: this.ball.passTrigger || null
+          };
           const receptionChance = this.autonomous
             ? this.clamp(
                 0.72 +
@@ -478,14 +505,31 @@
               )
             : 1;
           if (this.random.next() <= receptionChance) {
+            const oneTouchDecision = this.getOneTouchPassDecision(
+              receiver,
+              passer,
+              incomingPass
+            );
             this.setBallController(receiver);
             const receivingTeam = this.getTeam(receiver.teamId);
             receivingTeam.stats.passesCompleted += 1;
             if (passer) passer.matchStats.passesCompleted += 1;
             this.emit("pass_completed", {
               teamId: receiver.teamId,
-              playerId: receiver.id
+              playerId: receiver.id,
+              passerId: passer?.id || null,
+              oneTouch: incomingPass.oneTouch,
+              combination: incomingPass.combination,
+              continuedFirstTime: Boolean(oneTouchDecision)
             });
+            if (oneTouchDecision) {
+              this.performPass(oneTouchDecision.receiverId, {
+                oneTouch: true,
+                oneTouchChain: incomingPass.oneTouchChain + 1,
+                combination: oneTouchDecision.combination,
+                trigger: oneTouchDecision.trigger
+              });
+            }
           } else {
             const passingTeam = this.getTeam(receiver.teamId);
             passingTeam.stats.passesMissed += 1;
@@ -555,7 +599,11 @@
         contactedPlayerIds: [],
         passerId: null,
         shooterId: null,
-        goalChance: null
+        goalChance: null,
+        oneTouch: false,
+        oneTouchChain: 0,
+        combination: false,
+        passTrigger: null
       });
       this.possession = null;
     }
@@ -593,7 +641,11 @@
         contactedPlayerIds: [],
         passerId: null,
         shooterId: null,
-        goalChance: null
+        goalChance: null,
+        oneTouch: false,
+        oneTouchChain: 0,
+        combination: false,
+        passTrigger: null
       });
       this.decisionRemainingMs = this.getDecisionDelay(player);
     }
@@ -629,8 +681,11 @@
     }
 
     updateTacticalTargets() {
-      const possessionTeamId = this.possession?.teamId;
-      const carrier = this.getController();
+      const passReceiver = this.ball.mode === "travelling" && this.ball.action === "pass"
+        ? this.findPlayer(this.ball.intendedReceiverId)
+        : null;
+      const possessionTeamId = this.possession?.teamId || passReceiver?.teamId || null;
+      const carrier = this.getController() || passReceiver;
 
       this.teams.forEach((team) => {
         const inPossession = team.id === possessionTeamId;
@@ -1101,6 +1156,105 @@
       });
     }
 
+    getOneTouchPassDecision(receiver, incomingPasser, incomingPass = {}) {
+      if (
+        !this.autonomous ||
+        receiver.role === "GOL" ||
+        (incomingPass.oneTouchChain || 0) >= 1 ||
+        (incomingPass.distance || 0) > 32
+      ) {
+        return null;
+      }
+
+      const team = this.getTeam(receiver.teamId);
+      const opponents = this.getOpponent(team).players;
+      const receiverProgress = this.getAttackProgress(receiver, team);
+      const pressureUrgency = this.clamp((receiver.pressure - 0.62) / 0.36, 0, 1);
+      const ability = (
+        receiver.attributes.technique * 0.58 +
+        receiver.attributes.intelligence * 0.42
+      ) / 100;
+      const incomingOrigin = {
+        x: incomingPass.startX ?? incomingPasser?.x ?? receiver.x,
+        y: incomingPass.startY ?? incomingPasser?.y ?? receiver.y
+      };
+
+      const candidates = team.players
+        .filter((player) => player !== receiver)
+        .filter((player) => !this.isOffside(player, receiver))
+        .map((player) => {
+          const distance = this.distance(receiver, player);
+          const laneSafety = this.getLaneSafety(receiver, player, opponents);
+          const progress = this.getAttackProgress(player, team) - receiverProgress;
+          const isReturnPass = player === incomingPasser;
+          const passerRun = isReturnPass ? this.distance(player, incomingOrigin) : 0;
+          const combination = Boolean(
+            isReturnPass &&
+            distance >= 5 &&
+            distance <= 24 &&
+            laneSafety >= 0.58 &&
+            passerRun >= 2.5
+          );
+          const exceptional = Boolean(
+            distance >= 6 &&
+            distance <= 27 &&
+            laneSafety >= 0.8 &&
+            player.pressure <= 0.48 &&
+            player.spaceScore >= 0.5 &&
+            (progress >= 6 || combination)
+          );
+          const score =
+            laneSafety * 0.34 +
+            this.clamp(1 - Math.abs(distance - 15) / 17, 0, 1) * 0.2 +
+            this.clamp((progress + 6) / 22, 0, 1) * 0.18 +
+            player.spaceScore * 0.12 +
+            (1 - player.pressure) * 0.08 +
+            (combination ? 0.22 : 0) +
+            (exceptional ? 0.14 : 0);
+          return {
+            player,
+            distance,
+            laneSafety,
+            progress,
+            combination,
+            exceptional,
+            score
+          };
+        })
+        .filter((candidate) =>
+          candidate.distance <= 30 &&
+          candidate.laneSafety >= 0.46
+        )
+        .sort((a, b) => b.score - a.score);
+
+      const best = candidates[0];
+      if (!best) return null;
+
+      const underHighPressure = receiver.pressure >= 0.7;
+      if (!underHighPressure && !best.exceptional && !best.combination) return null;
+
+      const attemptChance = this.clamp(
+        0.04 +
+          ability * 0.34 +
+          pressureUrgency * 0.24 +
+          (best.exceptional ? 0.16 : 0) +
+          (best.combination ? 0.1 : 0),
+        0.12,
+        0.82
+      );
+      if (this.random.next() > attemptChance) return null;
+
+      return {
+        receiverId: best.player.id,
+        combination: best.combination,
+        trigger: underHighPressure
+          ? "pressure"
+          : (best.combination ? "combination" : "vision"),
+        pressure: receiver.pressure,
+        optionScore: best.score
+      };
+    }
+
     decideAction() {
       const carrier = this.getController();
       if (!carrier) return;
@@ -1302,7 +1456,11 @@
         lastTouchedTeamId: shooter.teamId,
         contactedPlayerIds: [],
         shooterId: shooter.id,
-        goalChance
+        goalChance,
+        oneTouch: false,
+        oneTouchChain: 0,
+        combination: false,
+        passTrigger: null
       });
       this.emit("shot_started", {
         teamId: team.id,

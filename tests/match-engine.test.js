@@ -106,6 +106,7 @@ test("overall is derived from the four attributes and players accumulate match s
     "distanceCovered",
     "goals",
     "interceptions",
+    "oneTouchPasses",
     "passesAttempted",
     "passesCompleted",
     "recoveries",
@@ -187,6 +188,120 @@ test("each canonical attribute influences its matching action group", () => {
     [opponent]
   );
   assert.ok(highDefensiveLaneSafety < lowDefensiveLaneSafety);
+});
+
+test("high pressure can trigger a first-time return pass for a wall pass", () => {
+  const engine = new MatchEngine({
+    teams: createTeams(),
+    seed: 37
+  });
+  const team = engine.teams[0];
+  const receiver = team.players.find((player) => player.role === "MC");
+  const originalPasser = team.players.find((player) => player.role === "ATA");
+
+  receiver.x = 50;
+  receiver.y = 60;
+  receiver.pressure = 0.82;
+  originalPasser.x = 50;
+  originalPasser.y = 51;
+  originalPasser.pressure = 0.1;
+  originalPasser.spaceScore = 0.9;
+  team.players
+    .filter((player) => player !== receiver && player !== originalPasser)
+    .forEach((player, index) => {
+      player.x = index % 2 ? 8 : 92;
+      player.y = 78;
+      player.pressure = 0.7;
+      player.spaceScore = 0.2;
+    });
+  engine.getOpponent(team).players.forEach((player, index) => {
+    player.x = index % 2 ? 12 : 88;
+    player.y = 25;
+  });
+  engine.random.next = () => 0;
+
+  const decision = engine.getOneTouchPassDecision(receiver, originalPasser, {
+    startX: 50,
+    startY: 64,
+    distance: 14,
+    oneTouchChain: 0
+  });
+
+  assert.equal(decision.receiverId, originalPasser.id);
+  assert.equal(decision.combination, true);
+  assert.equal(decision.trigger, "pressure");
+  assert.equal(engine.getOneTouchPassDecision(receiver, originalPasser, {
+    distance: 14,
+    oneTouchChain: 1
+  }), null);
+});
+
+test("a first-time pass continues the sequence without a control delay", () => {
+  const engine = new MatchEngine({
+    teams: createTeams(),
+    seed: 41,
+    autonomous: false
+  });
+  const passer = engine.getController();
+  const teammates = engine.teams[0].players.filter((player) => player !== passer);
+  const receiver = teammates[0];
+  const returnTarget = teammates[1];
+  passer.x = 46;
+  passer.y = 50;
+  receiver.x = 50;
+  receiver.y = 50;
+  returnTarget.x = 54;
+  returnTarget.y = 50;
+  engine.getOpponent(engine.teams[0]).players.forEach((player, index) => {
+    player.x = index % 2 ? 8 : 92;
+    player.y = 25;
+  });
+  let decisions = 0;
+  engine.getOneTouchPassDecision = () => {
+    decisions += 1;
+    return decisions === 1
+      ? {
+          receiverId: returnTarget.id,
+          combination: true,
+          trigger: "combination"
+        }
+      : null;
+  };
+
+  engine.command({ type: "start" });
+  engine.performPass(receiver.id);
+  engine.advance(5_000);
+
+  const events = engine.drainEvents();
+  const passes = events.filter((event) => event.type === "pass_started");
+  const firstTimePass = passes.find((event) => event.data.oneTouch);
+  const receiverAfter = engine.teams[0].players.find((player) => player.id === receiver.id);
+
+  assert.equal(passes.length, 2);
+  assert.equal(firstTimePass.data.playerId, receiver.id);
+  assert.equal(firstTimePass.data.receiverId, returnTarget.id);
+  assert.equal(firstTimePass.data.combination, true);
+  assert.equal(receiverAfter.matchStats.oneTouchPasses, 1);
+  assert.equal(engine.teams[0].stats.oneTouchPasses, 1);
+});
+
+test("the attacking team keeps its shape while a pass is travelling", () => {
+  const engine = new MatchEngine({
+    teams: createTeams(),
+    seed: 43,
+    autonomous: false
+  });
+  const receiver = engine.teams[0].players.find((player) => player.role === "MC");
+  receiver.x = 50;
+  receiver.y = 60;
+
+  engine.command({ type: "start" });
+  engine.performPass(receiver.id);
+  engine.updateTacticalTargets();
+
+  assert.equal(engine.ball.mode, "travelling");
+  assert.equal(engine.ball.intendedReceiverId, receiver.id);
+  assert.ok(receiver.targetY < receiver.y);
 });
 
 test("goalkeepers stay close to goal during normal play and only close down a clear one-on-one", () => {
