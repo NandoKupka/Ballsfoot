@@ -10,11 +10,12 @@ The current product surface is a live match simulator: two teams line up in a 4-
 
 - Match: a simulated football game with two periods, stoppage time, score, state transitions, and restarts.
 - Team: one side of the match. Each team has identity, colors, venue, direction of attack, formation, players, and score.
-- Player: a member of a team with a stable shirt number, overall rating, ordered preferred positions, and a current on-field role.
-- Player attribute: a stable capability used to resolve the actions suited to it: pace, passing, vision, control, finishing, defending, positioning, or goalkeeping.
+- Player: a member of a team with a stable shirt number, four configured attributes, a derived overall rating, ordered preferred positions, and a current on-field role.
+- Player attribute: one of the four stable capabilities used to resolve actions: physical, technique, intelligence, or defense.
+- Overall: the rounded arithmetic mean of physical, technique, intelligence, and defense. It is calculated by the engine and is never configured directly.
 - Player match statistics: observed production during one match, such as touches, distance covered, passes, shots, goals, interceptions, recoveries, carries, and saves.
 - Preferred position: a role a player is suited to occupy, ordered from strongest preference to weaker alternatives.
-- Lineup assignment: the allocation of players to formation slots. Higher-overall players claim compatible preferred slots first; unassigned players fill the remaining slots.
+- Lineup assignment: the allocation of players to formation slots. Players with a higher derived overall claim compatible preferred slots first; unassigned players fill the remaining slots.
 - Formation: a set of tactical slots, each defined by an on-field role and base position. The only implemented formation is `4-4-2`.
 - Possession: the current player carrying the ball. Many tactical calculations are centered on the possession holder.
 - Ball state: the ball's current lifecycle state: controlled by a player, travelling toward a target, loose after a deflection, or out of play. A travelling or loose ball has no possession holder.
@@ -52,11 +53,13 @@ Important tactical concepts:
 
 - Defensive line height and compactness keep the team shape coherent.
 - Build-up rules prefer center backs, fullbacks, the holding midfielder, and playmaker options.
-- Passing weights consider proximity, forward progress, lane safety, receiving pressure, space, role, passing, vision, control, and positioning.
+- Passing and receiving use technique for execution and intelligence for option selection, timing, and positioning.
 - Final-third actions can become through balls or crosses before a shot.
 - Offside is modeled using attacking progress, defensive line progress, ball position, and eligibility.
-- Dribbles depend on role, pressure, marker distance, cooldown, and overall ratings.
-- Shots depend on role, distance to goal, pressure, finishing, control, positioning, and the opposing goalkeeper.
+- Running speed and acceleration use physical; carries and dribbles combine physical and technique.
+- Off-ball movement, decision speed, support selection, and composure use intelligence.
+- Marking, pressure, lane closure, and interceptions combine defense and intelligence.
+- Shots combine technique and intelligence. Goalkeepers combine defense and intelligence when attempting saves.
 - Counter-attacks and post-loss press are temporary team states after possession changes.
 
 ## UI Model
@@ -73,7 +76,7 @@ The field uses percentage coordinates from `0` to `100`. Player tokens and the b
 
 Runtime behavior is organized by responsibility:
 
-- `src/config/teams.js`: editable team, player, color, role, overall, and attribute data.
+- `src/config/teams.js`: editable team, player, color, role, and four-attribute data. Overall is not stored here.
 - `src/domain/match-engine.js`: headless match state, fixed-step timing, movement, decisions, ball lifecycle, scoring, statistics, and domain events.
 - `src/analytics/match-analysis.js`: seeded batch simulation and aggregate reports.
 - `src/ui/browser-game-adapter.js`: DOM, controls, animation loop, rendering, timeline, modal, and exports.

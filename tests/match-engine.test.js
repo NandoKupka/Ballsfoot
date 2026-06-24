@@ -21,7 +21,12 @@ function createTeams() {
       id: `${venue}-${index + 1}`,
       name: `${venue}-${index + 1}`,
       number: index + 1,
-      overall: 80,
+      attributes: {
+        physical: 80,
+        technique: 80,
+        intelligence: 80,
+        defense: 80
+      },
       preferredPositions: [role]
     }))
   }));
@@ -76,7 +81,7 @@ test("a pass keeps the ball in transit until a player controls it", () => {
   assert.equal(received.possession.playerId, receiver.id);
 });
 
-test("players expose role-specific attributes and accumulate match statistics", () => {
+test("overall is derived from the four attributes and players accumulate match statistics", () => {
   const engine = new MatchEngine({
     teams: createTeams(),
     seed: 17,
@@ -85,13 +90,17 @@ test("players expose role-specific attributes and accumulate match statistics", 
   });
   const initial = engine.getSnapshot();
   const team = initial.teams[0];
-  const goalkeeper = team.players.find((player) => player.role === "GOL");
   const striker = team.players.find((player) => player.role === "ATA");
-  const midfielder = team.players.find((player) => player.role === "MC");
-
-  assert.ok(goalkeeper.attributes.goalkeeping > striker.attributes.goalkeeping);
-  assert.ok(striker.attributes.finishing > goalkeeper.attributes.finishing);
-  assert.ok(midfielder.attributes.passing > striker.attributes.passing);
+  assert.deepEqual(Object.keys(striker.attributes).sort(), [
+    "defense",
+    "intelligence",
+    "physical",
+    "technique"
+  ]);
+  team.players.forEach((player) => {
+    const values = Object.values(player.attributes);
+    assert.equal(player.overall, Math.round(values.reduce((sum, value) => sum + value, 0) / values.length));
+  });
   assert.deepEqual(Object.keys(striker.matchStats).sort(), [
     "carries",
     "distanceCovered",
@@ -118,6 +127,66 @@ test("players expose role-specific attributes and accumulate match statistics", 
   assert.ok(receiverAfter.matchStats.touches >= 1);
   assert.ok(afterPass.teams.flatMap((candidate) => candidate.players)
     .some((player) => player.matchStats.distanceCovered > 0));
+});
+
+test("each canonical attribute influences its matching action group", () => {
+  const engine = new MatchEngine({
+    teams: createTeams(),
+    seed: 23,
+    autonomous: false
+  });
+  const player = engine.teams[0].players.find((candidate) => candidate.role === "ATA");
+
+  player.attributes.physical = 20;
+  const lowPhysicalSpeed = engine.getPlayerSpeed(player);
+  player.attributes.physical = 95;
+  const highPhysicalSpeed = engine.getPlayerSpeed(player);
+  assert.ok(highPhysicalSpeed > lowPhysicalSpeed);
+
+  player.pressure = 0;
+  player.attributes.intelligence = 20;
+  engine.random.state = 123;
+  const lowIntelligenceDelay = engine.getDecisionDelay(player);
+  player.attributes.intelligence = 95;
+  engine.random.state = 123;
+  const highIntelligenceDelay = engine.getDecisionDelay(player);
+  assert.ok(highIntelligenceDelay < lowIntelligenceDelay);
+
+  const passingSpeed = (technique) => {
+    const passingEngine = new MatchEngine({
+      teams: createTeams(),
+      seed: 29,
+      autonomous: false
+    });
+    const passer = passingEngine.getController();
+    const receiver = passingEngine.teams[0].players.find((candidate) => candidate !== passer);
+    passer.attributes.technique = technique;
+    passingEngine.performPass(receiver.id);
+    return passingEngine.ball.speed;
+  };
+  assert.ok(passingSpeed(95) > passingSpeed(20));
+
+  const opponent = {
+    x: 50,
+    y: 50,
+    attributes: {
+      defense: 20,
+      intelligence: 20
+    }
+  };
+  const lowDefensiveLaneSafety = engine.getLaneSafety(
+    { x: 20, y: 50 },
+    { x: 80, y: 50 },
+    [opponent]
+  );
+  opponent.attributes.defense = 95;
+  opponent.attributes.intelligence = 95;
+  const highDefensiveLaneSafety = engine.getLaneSafety(
+    { x: 20, y: 50 },
+    { x: 80, y: 50 },
+    [opponent]
+  );
+  assert.ok(highDefensiveLaneSafety < lowDefensiveLaneSafety);
 });
 
 test("fixed-step simulation produces the same result for different frame chunks", () => {
@@ -388,7 +457,17 @@ test("fullbacks and wide midfielders advance during possession", () => {
   const average = (role) => totals.get(role).progress / totals.get(role).samples;
   const advancedRate = (role) => totals.get(role).advanced / totals.get(role).samples;
 
-  assert.ok((average("LE") + average("LD")) / 2 >= 31);
-  assert.ok((average("ME") + average("MD")) / 2 >= 47.5);
-  assert.ok((advancedRate("ME") + advancedRate("MD")) / 2 >= 0.06);
+  const fullbackAverage = (average("LE") + average("LD")) / 2;
+  const wideMidfielderAverage = (average("ME") + average("MD")) / 2;
+  const wideMidfielderAdvancedRate = (advancedRate("ME") + advancedRate("MD")) / 2;
+
+  assert.ok(fullbackAverage >= 31, `fullback average progress was ${fullbackAverage}`);
+  assert.ok(
+    wideMidfielderAverage >= 47.5,
+    `wide midfielder average progress was ${wideMidfielderAverage}`
+  );
+  assert.ok(
+    wideMidfielderAdvancedRate >= 0.06,
+    `wide midfielder advanced rate was ${wideMidfielderAdvancedRate}`
+  );
 });

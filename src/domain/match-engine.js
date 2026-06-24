@@ -27,28 +27,7 @@
     { role: "ATA", x: 42, y: 41 },
     { role: "ATA", x: 58, y: 41 }
   ];
-  const ATTRIBUTE_NAMES = [
-    "pace",
-    "passing",
-    "vision",
-    "control",
-    "finishing",
-    "defending",
-    "positioning",
-    "goalkeeping"
-  ];
-  const ROLE_ATTRIBUTE_BIASES = {
-    GOL: { pace: -16, passing: -4, vision: 1, control: 0, finishing: -38, defending: 2, positioning: 10, goalkeeping: 14 },
-    ZAG: { pace: -3, passing: -3, vision: -2, control: -3, finishing: -30, defending: 12, positioning: 9, goalkeeping: -55 },
-    LE: { pace: 8, passing: 3, vision: 1, control: 4, finishing: -12, defending: 5, positioning: 5, goalkeeping: -55 },
-    LD: { pace: 8, passing: 3, vision: 1, control: 4, finishing: -12, defending: 5, positioning: 5, goalkeeping: -55 },
-    VOL: { pace: 0, passing: 5, vision: 5, control: 4, finishing: -10, defending: 9, positioning: 8, goalkeeping: -55 },
-    MC: { pace: 2, passing: 9, vision: 10, control: 8, finishing: 3, defending: 0, positioning: 7, goalkeeping: -55 },
-    ME: { pace: 8, passing: 6, vision: 5, control: 7, finishing: 4, defending: -2, positioning: 7, goalkeeping: -55 },
-    MD: { pace: 8, passing: 6, vision: 5, control: 7, finishing: 4, defending: -2, positioning: 7, goalkeeping: -55 },
-    ALA: { pace: 10, passing: 7, vision: 5, control: 8, finishing: 5, defending: 1, positioning: 8, goalkeeping: -55 },
-    ATA: { pace: 6, passing: 0, vision: 1, control: 7, finishing: 12, defending: -25, positioning: 10, goalkeeping: -55 }
-  };
+  const ATTRIBUTE_NAMES = ["physical", "technique", "intelligence", "defense"];
 
   class SeededRandom {
     constructor(seed = Date.now()) {
@@ -138,27 +117,30 @@
           turnovers: 0
         },
         attacksDown: index === 1,
-        players: (config.players || []).map((player, playerIndex) => ({
-          id: player.id || `${config.id}-${player.number || playerIndex + 1}`,
-          teamId: config.id,
-          name: player.name,
-          number: player.number || playerIndex + 1,
-          overall: player.overall ?? 80,
-          preferredPositions: [...(player.preferredPositions || [])],
-          attributeOverrides: { ...(player.attributes || {}) },
-          role: "RES",
-          x: 50,
-          y: 50,
-          targetX: 50,
-          targetY: 50,
-          velocityX: 0,
-          velocityY: 0,
-          pressure: 0,
-          spaceScore: 0,
-          movementPhase: this.random.next() * Math.PI * 2,
-          roamingBias: this.random.next() * 2 - 1,
-          nextTargetReviewMs: 0
-        }))
+        players: (config.players || []).map((player, playerIndex) => {
+          const attributes = this.createPlayerAttributes(player);
+          return {
+            id: player.id || `${config.id}-${player.number || playerIndex + 1}`,
+            teamId: config.id,
+            name: player.name,
+            number: player.number || playerIndex + 1,
+            overall: this.calculateOverall(attributes),
+            preferredPositions: [...(player.preferredPositions || [])],
+            attributes,
+            role: "RES",
+            x: 50,
+            y: 50,
+            targetX: 50,
+            targetY: 50,
+            velocityX: 0,
+            velocityY: 0,
+            pressure: 0,
+            spaceScore: 0,
+            movementPhase: this.random.next() * Math.PI * 2,
+            roamingBias: this.random.next() * 2 - 1,
+            nextTargetReviewMs: 0
+          };
+        })
       };
 
       this.applyFormation(team);
@@ -198,23 +180,24 @@
           velocityX: 0,
           velocityY: 0
         });
-        player.attributes = this.createPlayerAttributes(player, slot.role);
         player.matchStats = player.matchStats || this.createPlayerMatchStats();
       });
     }
 
-    createPlayerAttributes(player, role) {
-      const base = player.overall ?? 80;
-      const biases = ROLE_ATTRIBUTE_BIASES[role] || {};
+    createPlayerAttributes(player) {
       return ATTRIBUTE_NAMES.reduce((attributes, name) => {
-        const override = player.attributeOverrides?.[name];
-        attributes[name] = this.clamp(
-          Math.round(override ?? (base + (biases[name] || 0))),
-          5,
-          99
-        );
+        const value = player.attributes?.[name];
+        if (!Number.isFinite(value)) {
+          throw new Error(`Player ${player.name || player.number || "unknown"} is missing attribute ${name}.`);
+        }
+        attributes[name] = this.clamp(Math.round(value), 1, 99);
         return attributes;
       }, {});
+    }
+
+    calculateOverall(attributes) {
+      const total = ATTRIBUTE_NAMES.reduce((sum, name) => sum + attributes[name], 0);
+      return Math.round(total / ATTRIBUTE_NAMES.length);
     }
 
     createPlayerMatchStats() {
@@ -423,7 +406,7 @@
         startY: passer.y,
         targetX: receiver.x,
         targetY: receiver.y,
-        speed: 28 + passer.attributes.passing * 0.08 + Math.min(distance, 35) * 0.42,
+        speed: 28 + passer.attributes.technique * 0.08 + Math.min(distance, 35) * 0.42,
         velocityX: 0,
         velocityY: 0,
         travelled: 0,
@@ -482,8 +465,8 @@
           const receptionChance = this.autonomous
             ? this.clamp(
                 0.72 +
-                  receiver.attributes.control / 420 +
-                  receiver.attributes.positioning / 900 -
+                  receiver.attributes.technique / 520 +
+                  receiver.attributes.intelligence / 700 -
                   this.ball.distance / 320,
                 0.68,
                 0.98
@@ -688,7 +671,10 @@
               const target = this.getOffBallTarget(player, team, carrier);
               player.targetX = target.x;
               player.targetY = target.y;
-              player.nextTargetReviewMs = this.simulationElapsedMs + 460 + this.random.next() * 520;
+              const readingDelay = 650 - player.attributes.intelligence * 3.2;
+              player.nextTargetReviewMs = this.simulationElapsedMs +
+                this.clamp(readingDelay, 260, 620) +
+                this.random.next() * 320;
             }
             return;
           }
@@ -787,9 +773,11 @@
             ? goalThreat * (this.isWideMidfielder(player) || player.role === "ALA" ? 0.58 : 0.48)
             : goalThreat * 0.06;
           const wideAdvanceBias = this.isWideMidfielder(player) || player.role === "ALA"
-            ? usefulProgress * 0.38
+            ? usefulProgress * 0.58
             : (this.isFullback(player) ? usefulProgress * 0.2 : 0);
-          const positioningBias = player.attributes.positioning / 500;
+          const decisionNoise = (this.random.next() - 0.5) *
+            (100 - player.attributes.intelligence) / 100 *
+            0.28;
           const score =
             this.clamp(nearestOpponent / 15, 0, 1) * 0.3 +
             laneSafety * 0.26 +
@@ -799,7 +787,7 @@
             movementCost * 0.08 +
             finalThirdRun +
             wideAdvanceBias +
-            positioningBias +
+            decisionNoise +
             player.roamingBias * 0.015;
           return { point, score };
         })
@@ -919,9 +907,17 @@
             const currentDistance = this.distance(defender, opponent);
             const threat = this.distance(opponent, this.getOwnGoalPoint(team));
             const rolePenalty = this.isDefensive(defender) ? 0 : 2.5;
+            const defensiveReading = (
+              defender.attributes.defense * 0.58 +
+              defender.attributes.intelligence * 0.42
+            ) / 100;
             return {
               opponent,
-              score: currentDistance + laneDistance * 0.18 + threat * 0.04 + rolePenalty
+              score: currentDistance +
+                laneDistance * 0.18 +
+                threat * 0.04 +
+                rolePenalty -
+                defensiveReading * 4
             };
           })
           .filter((candidate) => candidate.score < 44)
@@ -949,9 +945,9 @@
       if (!mark) return this.avoidCrowding(player, zoneTarget);
 
       const goalSide = this.pointBetween(mark, this.getOwnGoalPoint(team), this.isDefensive(player) ? 0.16 : 0.1);
-      const defensiveQuality = (player.attributes.defending + player.attributes.positioning) / 200;
+      const defensiveQuality = (player.attributes.defense + player.attributes.intelligence) / 200;
       const markingWeight = this.clamp(
-        (this.isDefensive(player) ? 0.7 : 0.62) + defensiveQuality * 0.2,
+        (this.isDefensive(player) ? 0.712 : 0.632) + defensiveQuality * 0.2,
         0.68,
         0.94
       );
@@ -979,7 +975,10 @@
                 y: ((player.targetY - player.y) / distance) * desiredSpeed
               }
             : { x: 0, y: 0 };
-          const acceleration = (this.isForward(player) || this.isWide(player) ? 20 : 17) * seconds;
+          const accelerationFactor = 0.68 + player.attributes.physical / 160;
+          const acceleration = (this.isForward(player) || this.isWide(player) ? 20 : 17) *
+            accelerationFactor *
+            seconds;
           player.velocityX = this.approach(player.velocityX, desiredVelocity.x, acceleration);
           player.velocityY = this.approach(player.velocityY, desiredVelocity.y, acceleration);
 
@@ -1018,12 +1017,13 @@
           const crowd = distances
             .filter((item) => item.distance < 10)
             .reduce((sum, item) =>
-              sum + ((10 - item.distance) / 10) * (0.75 + item.opponent.attributes.defending / 200)
+              sum + ((10 - item.distance) / 10) * (0.75 + item.opponent.attributes.defense / 200)
             , 0);
           const nearestDefendingFactor = nearest
-            ? 0.72 + nearest.opponent.attributes.defending / 180
+            ? 0.72 + nearest.opponent.attributes.defense / 180
             : 1;
-          const composureFactor = 1.18 - player.attributes.control / 260;
+          const composureFactor = 1.22 -
+            (player.attributes.technique * 0.45 + player.attributes.intelligence * 0.55) / 260;
           player.markerId = nearest?.opponent.id || null;
           player.pressure = nearest
             ? this.clamp(((1 - nearest.distance / 17) * nearestDefendingFactor + crowd * 0.1) * composureFactor, 0, 1)
@@ -1048,6 +1048,11 @@
       let shotChance = maximumShotDistance && goalDistance < maximumShotDistance
         ? this.clamp(0.36 + shotCloseness * 0.62 + (1 - carrier.pressure) * 0.1, 0.18, 0.92)
         : 0;
+      const shootingDecision = (
+        carrier.attributes.technique * 0.45 +
+        carrier.attributes.intelligence * 0.55
+      ) / 100;
+      shotChance *= 0.65 + shootingDecision * 0.45;
       if (goalDistance < 24 && maximumShotDistance) shotChance = Math.max(shotChance, 0.9);
       if (goalDistance > 30) shotChance *= 0.3;
 
@@ -1070,7 +1075,7 @@
               carrier.spaceScore * 0.2 -
               carrier.pressure * 0.22 +
               finalThirdCarryBoost +
-              (carrier.attributes.control + carrier.attributes.pace - 160) / 300,
+              (carrier.attributes.technique + carrier.attributes.physical - 160) / 300,
             0.04,
             0.72
           );
@@ -1139,8 +1144,8 @@
             buildUpBias *= 0.16;
           }
           const offsidePenalty = this.isOffside(player, passer) ? 0.02 : 1;
-          const passerQuality = (passer.attributes.passing * 0.58 + passer.attributes.vision * 0.42) / 100;
-          const receiverQuality = (player.attributes.control + player.attributes.positioning) / 200;
+          const passerQuality = (passer.attributes.technique * 0.58 + passer.attributes.intelligence * 0.42) / 100;
+          const receiverQuality = (player.attributes.technique + player.attributes.intelligence) / 200;
           const abilityBias = 0.62 + passerQuality * 0.24 + receiverQuality * 0.24;
           const longPassSkill = distance > 30 ? 0.42 + passerQuality * 0.78 : 1;
           return {
@@ -1174,11 +1179,12 @@
       const goal = this.getGoalPoint(team);
       const distance = this.distance(shooter, goal);
       const finishingQuality = (
-        shooter.attributes.finishing * 0.62 +
-        shooter.attributes.control * 0.18 +
-        shooter.attributes.positioning * 0.2
+        shooter.attributes.technique * 0.68 +
+        shooter.attributes.intelligence * 0.32
       ) / 100;
-      const goalkeeperQuality = goalkeeper?.attributes.goalkeeping || 50;
+      const goalkeeperQuality = goalkeeper
+        ? goalkeeper.attributes.defense * 0.72 + goalkeeper.attributes.intelligence * 0.28
+        : 50;
       const goalChance = this.clamp(
         (
           0.025 +
@@ -1191,7 +1197,7 @@
       );
       const roll = this.random.next();
       const saveChance = this.clamp(
-        0.34 + goalkeeperQuality / 180 - shooter.attributes.finishing / 450,
+        0.34 + goalkeeperQuality / 180 - shooter.attributes.technique / 450,
         0.3,
         0.82
       );
@@ -1339,13 +1345,18 @@
       const receiverTeam = this.getTeam(receiver.teamId);
       const opponents = this.getOpponent(receiverTeam).players.filter((player) => player.role !== "GOL");
       const contacted = new Set(this.ball.contactedPlayerIds || []);
+      const passer = this.findPlayer(this.ball.passerId);
+      const passQuality = passer
+        ? (passer.attributes.technique * 0.62 + passer.attributes.intelligence * 0.38) / 100
+        : 0.5;
+      const interceptionRadius = this.clamp(1.42 - passQuality * 0.58, 0.78, 1.18);
       const candidates = opponents
         .filter((player) => !contacted.has(player.id))
         .map((player) => ({
           player,
           distance: this.distanceToSegment(player, from, to)
         }))
-        .filter((item) => item.distance < 1.15)
+        .filter((item) => item.distance < interceptionRadius)
         .sort((a, b) => a.distance - b.distance);
 
       const candidate = candidates[0];
@@ -1353,8 +1364,8 @@
       this.ball.contactedPlayerIds.push(candidate.player.id);
       const controlChance = this.clamp(
         0.3 +
-          candidate.player.attributes.defending / 230 +
-          candidate.player.attributes.positioning / 420,
+          candidate.player.attributes.defense / 230 +
+          candidate.player.attributes.intelligence / 420,
         0.34,
         0.86
       );
@@ -1368,7 +1379,11 @@
       const danger = opponents.reduce((sum, opponent) => {
         const distance = this.distanceToSegment(opponent, from, to);
         if (distance > 10) return sum;
-        return sum + (10 - distance) / 10;
+        const defensiveReading = (
+          opponent.attributes.defense * 0.58 +
+          opponent.attributes.intelligence * 0.42
+        ) / 100;
+        return sum + ((10 - distance) / 10) * (0.55 + defensiveReading * 0.75);
       }, 0);
       return this.clamp(1 - danger * 0.24, 0.08, 1);
     }
@@ -1388,10 +1403,10 @@
 
     getRoleAttackPush(role) {
       if (role === "ZAG") return 4;
-      if (role === "LE" || role === "LD") return 20;
+      if (role === "LE" || role === "LD") return 21;
       if (role === "VOL") return 7;
       if (role === "MC") return 13;
-      if (role === "ME" || role === "MD") return 26;
+      if (role === "ME" || role === "MD") return 28;
       if (role === "ALA") return 30;
       if (this.isForward({ role })) return 13;
       return 0;
@@ -1405,9 +1420,10 @@
     }
 
     getPlayerSpeed(player) {
-      const paceFactor = this.clamp(0.65 + player.attributes.pace / 160, 0.68, 1.28);
+      const paceFactor = this.clamp(0.65 + player.attributes.physical / 160, 0.68, 1.28);
       if (player.role === "GOL") return 3.6 * paceFactor;
-      if (this.isForward(player) || this.isWide(player)) return 8.6 * paceFactor;
+      if (this.isWide(player)) return 9 * paceFactor;
+      if (this.isForward(player)) return 8.6 * paceFactor;
       if (player.role === "ZAG") return 6.4 * paceFactor;
       return 7.4 * paceFactor;
     }
@@ -1422,8 +1438,8 @@
 
     getDecisionDelay(player) {
       const pressureFactor = player?.pressure > 0.6 ? 0.72 : 1;
-      const mentalQuality = ((player?.attributes.vision || 80) + (player?.attributes.control || 80)) / 2;
-      const composureFactor = this.clamp(1.18 - mentalQuality / 260, 0.78, 1.16);
+      const intelligence = player?.attributes.intelligence || 50;
+      const composureFactor = this.clamp(1.2 - intelligence / 260, 0.78, 1.18);
       return (360 + this.random.next() * 420) * pressureFactor * composureFactor;
     }
 

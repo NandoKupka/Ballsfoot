@@ -388,16 +388,7 @@
 
     formatPlayerAttributes(player) {
       const attributes = player.attributes;
-      if (player.role === "GOL") {
-        return `OVR ${player.overall} | GOL ${attributes.goalkeeping} PAS ${attributes.passing} POS ${attributes.positioning}`;
-      }
-      if (["ZAG", "LE", "LD", "VOL"].includes(player.role)) {
-        return `OVR ${player.overall} | DEF ${attributes.defending} POS ${attributes.positioning} VEL ${attributes.pace}`;
-      }
-      if (["MC", "ME", "MD", "ALA"].includes(player.role)) {
-        return `OVR ${player.overall} | PAS ${attributes.passing} VIS ${attributes.vision} CON ${attributes.control}`;
-      }
-      return `OVR ${player.overall} | FIN ${attributes.finishing} POS ${attributes.positioning} VEL ${attributes.pace}`;
+      return `OVR ${player.overall} | FIS ${attributes.physical} TEC ${attributes.technique} INT ${attributes.intelligence} DEF ${attributes.defense}`;
     }
 
     formatPlayerTooltip(team, player) {
@@ -405,8 +396,7 @@
       const stats = player.matchStats;
       return [
         `${team.name} ${player.number} - ${player.name} (${player.role}) OVR ${player.overall}`,
-        `VEL ${attributes.pace} | PAS ${attributes.passing} | VIS ${attributes.vision} | CON ${attributes.control}`,
-        `FIN ${attributes.finishing} | DEF ${attributes.defending} | POS ${attributes.positioning} | GOL ${attributes.goalkeeping}`,
+        `FIS ${attributes.physical} | TEC ${attributes.technique} | INT ${attributes.intelligence} | DEF ${attributes.defense}`,
         `Partida: ${stats.passesCompleted}/${stats.passesAttempted} passes | ${stats.shots} chutes | ${stats.goals} gols | ${stats.interceptions} interceptacoes`
       ].join("\n");
     }
