@@ -22,7 +22,7 @@ The current product surface is a live match simulator: two teams line up in a 4-
 - Simulation time: continuous elapsed time advanced through fixed internal steps. Match-clock time is derived from simulation time, while playback speed controls how quickly simulation time is consumed.
 - Tactical context: a derived snapshot for one team: phase, intent, pressure zone, ball side, line centers, mentality, and defensive line.
 - Support option: a nearby teammate positioned to give the possession holder a safe short pass and form a small triangle around the ball.
-- First-time pass: an immediate redirection of a received ball without establishing a new controlled-possession phase. It is favored under high receiving pressure or when an exceptional next pass is available.
+- First-time pass: an immediate redirection of a received ball without establishing a new controlled-possession phase. Intelligence governs whether the player recognizes the option in time; technique governs execution.
 - Wall pass: a first-time return pass to the teammate who supplied the ball, allowing that teammate to continue the attacking move.
 - Cover shadow: a defender positioned between the possession holder and a likely receiver to close a passing lane without abandoning the team block.
 - Fullback cover: the same-side center back's responsibility to protect the channel behind an advanced fullback.

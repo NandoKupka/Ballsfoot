@@ -102,7 +102,9 @@
         oneTouch: false,
         oneTouchChain: 0,
         combination: false,
-        passTrigger: null
+        passTrigger: null,
+        decisionIntelligence: null,
+        requiredIntelligence: null
       };
       this.prepareKickoff(this.teams[0]);
       this.updatePressure();
@@ -437,7 +439,9 @@
         oneTouch: Boolean(options.oneTouch),
         oneTouchChain: options.oneTouch ? Number(options.oneTouchChain) || 1 : 0,
         combination: Boolean(options.combination),
-        passTrigger: options.trigger || null
+        passTrigger: options.trigger || null,
+        decisionIntelligence: options.decisionIntelligence || null,
+        requiredIntelligence: options.requiredIntelligence || null
       });
       this.emit("pass_started", {
         teamId: passer.teamId,
@@ -446,7 +450,9 @@
         distance,
         oneTouch: Boolean(options.oneTouch),
         combination: Boolean(options.combination),
-        trigger: options.trigger || null
+        trigger: options.trigger || null,
+        decisionIntelligence: options.decisionIntelligence || null,
+        requiredIntelligence: options.requiredIntelligence || null
       });
       return true;
     }
@@ -527,7 +533,9 @@
                 oneTouch: true,
                 oneTouchChain: incomingPass.oneTouchChain + 1,
                 combination: oneTouchDecision.combination,
-                trigger: oneTouchDecision.trigger
+                trigger: oneTouchDecision.trigger,
+                decisionIntelligence: oneTouchDecision.intelligence,
+                requiredIntelligence: oneTouchDecision.requiredIntelligence
               });
             }
           } else {
@@ -603,7 +611,9 @@
         oneTouch: false,
         oneTouchChain: 0,
         combination: false,
-        passTrigger: null
+        passTrigger: null,
+        decisionIntelligence: null,
+        requiredIntelligence: null
       });
       this.possession = null;
     }
@@ -645,7 +655,9 @@
         oneTouch: false,
         oneTouchChain: 0,
         combination: false,
-        passTrigger: null
+        passTrigger: null,
+        decisionIntelligence: null,
+        requiredIntelligence: null
       });
       this.decisionRemainingMs = this.getDecisionDelay(player);
     }
@@ -1170,10 +1182,8 @@
       const opponents = this.getOpponent(team).players;
       const receiverProgress = this.getAttackProgress(receiver, team);
       const pressureUrgency = this.clamp((receiver.pressure - 0.62) / 0.36, 0, 1);
-      const ability = (
-        receiver.attributes.technique * 0.58 +
-        receiver.attributes.intelligence * 0.42
-      ) / 100;
+      const technique = receiver.attributes.technique / 100;
+      const intelligence = receiver.attributes.intelligence;
       const incomingOrigin = {
         x: incomingPass.startX ?? incomingPasser?.x ?? receiver.x,
         y: incomingPass.startY ?? incomingPasser?.y ?? receiver.y
@@ -1233,13 +1243,24 @@
       const underHighPressure = receiver.pressure >= 0.7;
       if (!underHighPressure && !best.exceptional && !best.combination) return null;
 
+      const requiredIntelligence = underHighPressure
+        ? Math.round(42 + pressureUrgency * 12)
+        : (best.combination ? 50 : 64);
+      if (intelligence < requiredIntelligence) return null;
+
+      const intelligenceReadiness = this.clamp(
+        (intelligence - requiredIntelligence) / Math.max(99 - requiredIntelligence, 1),
+        0,
+        1
+      );
       const attemptChance = this.clamp(
-        0.04 +
-          ability * 0.34 +
+        0.03 +
+          technique * 0.22 +
+          intelligenceReadiness * 0.38 +
           pressureUrgency * 0.24 +
-          (best.exceptional ? 0.16 : 0) +
-          (best.combination ? 0.1 : 0),
-        0.12,
+          (best.exceptional ? 0.12 : 0) +
+          (best.combination ? 0.08 : 0),
+        0.08,
         0.82
       );
       if (this.random.next() > attemptChance) return null;
@@ -1251,7 +1272,9 @@
           ? "pressure"
           : (best.combination ? "combination" : "vision"),
         pressure: receiver.pressure,
-        optionScore: best.score
+        optionScore: best.score,
+        intelligence,
+        requiredIntelligence
       };
     }
 
@@ -1460,7 +1483,9 @@
         oneTouch: false,
         oneTouchChain: 0,
         combination: false,
-        passTrigger: null
+        passTrigger: null,
+        decisionIntelligence: null,
+        requiredIntelligence: null
       });
       this.emit("shot_started", {
         teamId: team.id,

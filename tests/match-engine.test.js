@@ -218,18 +218,29 @@ test("high pressure can trigger a first-time return pass for a wall pass", () =>
     player.x = index % 2 ? 12 : 88;
     player.y = 25;
   });
-  engine.random.next = () => 0;
-
-  const decision = engine.getOneTouchPassDecision(receiver, originalPasser, {
+  const incomingPass = {
     startX: 50,
     startY: 64,
     distance: 14,
     oneTouchChain: 0
-  });
+  };
+  engine.random.next = () => 0;
+
+  receiver.attributes.intelligence = 35;
+  assert.equal(
+    engine.getOneTouchPassDecision(receiver, originalPasser, incomingPass),
+    null
+  );
+
+  receiver.attributes.intelligence = 90;
+  const decision = engine.getOneTouchPassDecision(receiver, originalPasser, incomingPass);
 
   assert.equal(decision.receiverId, originalPasser.id);
   assert.equal(decision.combination, true);
   assert.equal(decision.trigger, "pressure");
+  assert.equal(decision.intelligence, 90);
+  assert.ok(decision.requiredIntelligence > 35);
+  assert.ok(decision.requiredIntelligence < 90);
   assert.equal(engine.getOneTouchPassDecision(receiver, originalPasser, {
     distance: 14,
     oneTouchChain: 1
@@ -263,7 +274,9 @@ test("a first-time pass continues the sequence without a control delay", () => {
       ? {
           receiverId: returnTarget.id,
           combination: true,
-          trigger: "combination"
+          trigger: "combination",
+          intelligence: 91,
+          requiredIntelligence: 50
         }
       : null;
   };
@@ -281,6 +294,8 @@ test("a first-time pass continues the sequence without a control delay", () => {
   assert.equal(firstTimePass.data.playerId, receiver.id);
   assert.equal(firstTimePass.data.receiverId, returnTarget.id);
   assert.equal(firstTimePass.data.combination, true);
+  assert.equal(firstTimePass.data.decisionIntelligence, 91);
+  assert.equal(firstTimePass.data.requiredIntelligence, 50);
   assert.equal(receiverAfter.matchStats.oneTouchPasses, 1);
   assert.equal(engine.teams[0].stats.oneTouchPasses, 1);
 });
