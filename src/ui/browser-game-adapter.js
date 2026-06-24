@@ -1,67 +1,16 @@
-(function exposeBrowserGame(root) {
+(function exposeBallsfootBrowserGame(root) {
   "use strict";
 
   if (!root || !root.document) return;
 
   const { MatchEngine } = root.BallsfootSimulation || {};
+  const { TEAMS_CONFIG, MATCH_SETTINGS } = root.BallsfootConfig || {};
   if (!MatchEngine) {
     throw new Error("BallsfootSimulation.MatchEngine must be loaded before the browser adapter.");
   }
-
-  const TEAMS_CONFIG = [
-    {
-      id: "time-vermelho",
-      name: "Time Vermelho",
-      shortName: "Vermelho",
-      mark: "VM",
-      venue: "home",
-      colors: {
-        main: "#e84d55",
-        deep: "#9f2730",
-        highlight: "#ff8186",
-        glow: "rgba(232, 77, 85, 0.28)"
-      },
-      players: [
-        { name: "Rochet", number: 1, overall: 90, preferredPositions: ["GOL"] },
-        { name: "Bernabei", number: 6, overall: 90, preferredPositions: ["LE", "ME"] },
-        { name: "Vitor Gabriel", number: 3, overall: 90, preferredPositions: ["ZAG"] },
-        { name: "Mercado", number: 4, overall: 90, preferredPositions: ["ZAG"] },
-        { name: "Bruno Gomes", number: 2, overall: 90, preferredPositions: ["LD", "MD"] },
-        { name: "Villagra", number: 5, overall: 90, preferredPositions: ["VOL", "MC"] },
-        { name: "Bruno Henrique", number: 8, overall: 90, preferredPositions: ["MD", "ME"] },
-        { name: "Alan Patrick", number: 10, overall: 90, preferredPositions: ["MC"] },
-        { name: "Carbonero", number: 7, overall: 90, preferredPositions: ["MD", "ATA"] },
-        { name: "Borre", number: 11, overall: 90, preferredPositions: ["ATA"] },
-        { name: "Alejandro", number: 9, overall: 90, preferredPositions: ["ATA"] }
-      ]
-    },
-    {
-      id: "time-azul",
-      name: "Time Azul",
-      shortName: "Azul",
-      mark: "AZ",
-      venue: "away",
-      colors: {
-        main: "#2878ff",
-        deep: "#134eb0",
-        highlight: "#5fa4ff",
-        glow: "rgba(40, 120, 255, 0.32)"
-      },
-      players: [
-        { name: "Rafael", number: 1, overall: 20, preferredPositions: ["GOL"] },
-        { name: "Bruno", number: 6, overall: 20, preferredPositions: ["LE", "ME"] },
-        { name: "Caio", number: 3, overall: 20, preferredPositions: ["ZAG"] },
-        { name: "Diego", number: 4, overall: 20, preferredPositions: ["ZAG"] },
-        { name: "Andre", number: 2, overall: 20, preferredPositions: ["LD", "MD"] },
-        { name: "Lucas", number: 5, overall: 20, preferredPositions: ["VOL", "MC"] },
-        { name: "Mateus", number: 8, overall: 20, preferredPositions: ["MC", "VOL"] },
-        { name: "Nicolas", number: 11, overall: 20, preferredPositions: ["ME", "ATA"] },
-        { name: "Pedro", number: 7, overall: 20, preferredPositions: ["MD", "ATA"] },
-        { name: "Tiago", number: 9, overall: 20, preferredPositions: ["ATA"] },
-        { name: "Vitor", number: 10, overall: 20, preferredPositions: ["ATA", "MC"] }
-      ]
-    }
-  ];
+  if (!TEAMS_CONFIG) {
+    throw new Error("BallsfootConfig.TEAMS_CONFIG must be loaded before the browser adapter.");
+  }
 
   class BrowserGameAdapter {
     constructor(documentRef = root.document, options = {}) {
@@ -73,7 +22,9 @@
       this.playerElements = new Map();
       this.teamLists = new Map();
       this.allLogEntries = [];
+      this.currentMatchEntries = [];
       this.keyMomentEntries = [];
+      this.matchSequence = 1;
       this.copyFeedbackTimer = null;
       this.seed = options.seed ?? Date.now();
       this.lastPanelRenderAt = 0;
@@ -85,7 +36,7 @@
       this.engine = new MatchEngine({
         teams: TEAMS_CONFIG,
         seed: this.seed,
-        matchClockRate: 120
+        matchClockRate: MATCH_SETTINGS.matchClockRate
       });
       this.mountPlayerTokens();
       this.bindControls();
@@ -187,7 +138,7 @@
           token.style.setProperty("--team-color", team.colors.main);
           token.style.setProperty("--team-deep", team.colors.deep);
           token.style.setProperty("--team-highlight", team.colors.highlight);
-          token.title = `${team.name} ${player.number} - ${player.name} (${player.role}) OVR ${player.overall}`;
+          token.title = this.formatPlayerTooltip(team, player);
           this.field.appendChild(token);
           this.playerElements.set(player.id, token);
         });
@@ -238,6 +189,7 @@
 
     consumeEvents(snapshot = this.engine.getSnapshot()) {
       this.engine.drainEvents().forEach((event) => {
+        if (event.type === "match_reset") this.beginNewMatchLog();
         const entry = this.describeEvent(event, snapshot);
         if (entry) this.addLog(entry);
         if (event.type === "goal") this.openGoalModal(event, snapshot);
@@ -298,6 +250,10 @@
           title: "Passe desviado",
           detail: `${player?.name || "Defensor"} toca na bola, que fica solta.`
         },
+        bad_control: {
+          title: "Dominio ruim",
+          detail: `${player?.name || "Jogador"} nao consegue controlar e a bola fica solta.`
+        },
         carry: {
           title: "Conducao",
           detail: `${player?.name || "Jogador"} avanca com a bola.`
@@ -342,6 +298,7 @@
     addLog(entry) {
       const normalized = {
         id: this.allLogEntries.length + 1,
+        sessionMatch: this.matchSequence,
         time: entry.time || this.engine?.getSnapshot().match.clock || "00'",
         type: entry.type || "system",
         kind: entry.kind || "system",
@@ -350,12 +307,19 @@
         data: entry.data || {}
       };
       this.allLogEntries.push(normalized);
+      this.currentMatchEntries.push(normalized);
 
       if (["goal", "shot_started", "shot_saved", "pass_intercepted", "halftime", "fulltime"].includes(normalized.kind)) {
         this.keyMomentEntries.push(normalized);
       }
 
       this.renderLogs();
+    }
+
+    beginNewMatchLog() {
+      this.matchSequence += 1;
+      this.currentMatchEntries = [];
+      this.keyMomentEntries = [];
     }
 
     render(timestamp = root.performance?.now?.() || Date.now(), snapshot = this.engine.getSnapshot()) {
@@ -388,7 +352,7 @@
           token.style.setProperty("--x", player.x);
           token.style.setProperty("--y", player.y);
           token.classList.toggle("has-ball", snapshot.ball.controllerId === player.id);
-          token.title = `${team.name} ${player.number} - ${player.name} (${player.role}) OVR ${player.overall} | pressao ${Math.round(player.pressure * 100)}%`;
+          token.title = this.formatPlayerTooltip(team, player);
         });
       });
     }
@@ -414,12 +378,37 @@
           number.appendChild(badge);
           name.textContent = player.name;
           role.className = "player-role";
-          role.textContent = `${player.role} | OVR ${player.overall}`;
+          role.textContent = `${player.role} | ${this.formatPlayerAttributes(player)}`;
           item.append(number, name, role);
           return item;
         });
         list.replaceChildren(...items);
       });
+    }
+
+    formatPlayerAttributes(player) {
+      const attributes = player.attributes;
+      if (player.role === "GOL") {
+        return `OVR ${player.overall} | GOL ${attributes.goalkeeping} PAS ${attributes.passing} POS ${attributes.positioning}`;
+      }
+      if (["ZAG", "LE", "LD", "VOL"].includes(player.role)) {
+        return `OVR ${player.overall} | DEF ${attributes.defending} POS ${attributes.positioning} VEL ${attributes.pace}`;
+      }
+      if (["MC", "ME", "MD", "ALA"].includes(player.role)) {
+        return `OVR ${player.overall} | PAS ${attributes.passing} VIS ${attributes.vision} CON ${attributes.control}`;
+      }
+      return `OVR ${player.overall} | FIN ${attributes.finishing} POS ${attributes.positioning} VEL ${attributes.pace}`;
+    }
+
+    formatPlayerTooltip(team, player) {
+      const attributes = player.attributes;
+      const stats = player.matchStats;
+      return [
+        `${team.name} ${player.number} - ${player.name} (${player.role}) OVR ${player.overall}`,
+        `VEL ${attributes.pace} | PAS ${attributes.passing} | VIS ${attributes.vision} | CON ${attributes.control}`,
+        `FIN ${attributes.finishing} | DEF ${attributes.defending} | POS ${attributes.positioning} | GOL ${attributes.goalkeeping}`,
+        `Partida: ${stats.passesCompleted}/${stats.passesAttempted} passes | ${stats.shots} chutes | ${stats.goals} gols | ${stats.interceptions} interceptacoes`
+      ].join("\n");
     }
 
     renderStats(snapshot) {
@@ -506,7 +495,7 @@
     }
 
     renderLogs() {
-      this.logCount.textContent = `${this.allLogEntries.length} lances`;
+      this.logCount.textContent = `${this.currentMatchEntries.length} lances | ${this.allLogEntries.length} acumulados`;
       this.eventLog.replaceChildren(...this.allLogEntries.map((entry) => {
         const item = this.document.createElement("li");
         item.className = entry.kind;
@@ -582,14 +571,14 @@
       if (mode === "csv") {
         const cell = (value) => `"${String(value ?? "").replaceAll('"', '""')}"`;
         return [
-          ["id", "time", "kind", "team", "title", "detail"].join(","),
+          ["id", "sessionMatch", "time", "kind", "team", "title", "detail"].join(","),
           ...this.allLogEntries.map((entry) =>
-            [entry.id, entry.time, entry.kind, entry.type, entry.title, entry.detail].map(cell).join(",")
+            [entry.id, entry.sessionMatch, entry.time, entry.kind, entry.type, entry.title, entry.detail].map(cell).join(",")
           )
         ].join("\n");
       }
       return this.allLogEntries
-        .map((entry) => `${entry.time} ${entry.title} - ${entry.detail}`)
+        .map((entry) => `[Jogo ${entry.sessionMatch}] ${entry.time} ${entry.title} - ${entry.detail}`)
         .join("\n");
     }
 

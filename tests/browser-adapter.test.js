@@ -123,13 +123,54 @@ test("the browser adapter initializes the engine and mounts every player", () =>
   context.globalThis = context;
 
   const root = path.resolve(__dirname, "..");
-  vm.runInContext(fs.readFileSync(path.join(root, "src", "match-engine.js"), "utf8"), context);
-  vm.runInContext(fs.readFileSync(path.join(root, "src", "browser-game-adapter.js"), "utf8"), context);
+  vm.runInContext(fs.readFileSync(path.join(root, "src", "config", "teams.js"), "utf8"), context);
+  vm.runInContext(fs.readFileSync(path.join(root, "src", "domain", "match-engine.js"), "utf8"), context);
+  vm.runInContext(fs.readFileSync(path.join(root, "src", "ui", "browser-game-adapter.js"), "utf8"), context);
   document.listeners.get("DOMContentLoaded")();
 
   assert.ok(context.tacticsGame);
   assert.equal(context.tacticsGame.engine.getSnapshot().teams.length, 2);
+  assert.equal(context.tacticsGame.engine.matchClockRate, 30);
   assert.equal(context.tacticsGame.playerElements.size, 22);
   assert.equal(document.getElementById("clock").textContent, "00'");
   assert.equal(document.getElementById("score").textContent, "0 x 0");
+});
+
+test("hidden export logs accumulate while the visible match log resets", () => {
+  const document = new FakeDocument();
+  const context = vm.createContext({
+    console,
+    document,
+    navigator: { clipboard: { writeText: async () => {} } },
+    performance: { now: () => 0 },
+    requestAnimationFrame: () => 1,
+    cancelAnimationFrame: () => {},
+    addEventListener: () => {},
+    clearTimeout,
+    setTimeout,
+    Blob,
+    URL: {
+      createObjectURL: () => "blob:test",
+      revokeObjectURL: () => {}
+    }
+  });
+  context.globalThis = context;
+
+  const root = path.resolve(__dirname, "..");
+  vm.runInContext(fs.readFileSync(path.join(root, "src", "config", "teams.js"), "utf8"), context);
+  vm.runInContext(fs.readFileSync(path.join(root, "src", "domain", "match-engine.js"), "utf8"), context);
+  vm.runInContext(fs.readFileSync(path.join(root, "src", "ui", "browser-game-adapter.js"), "utf8"), context);
+  document.listeners.get("DOMContentLoaded")();
+
+  const game = context.tacticsGame;
+  const initialCount = game.allLogEntries.length;
+  game.addLog({ kind: "goal", title: "Gol da primeira", detail: "Primeira partida" });
+  game.beginNewMatchLog();
+  game.addLog({ kind: "pass_completed", title: "Passe da segunda", detail: "Segunda partida" });
+
+  assert.equal(game.allLogEntries.length, initialCount + 2);
+  assert.equal(game.currentMatchEntries.length, 1);
+  assert.equal(game.currentMatchEntries[0].sessionMatch, 2);
+  assert.match(game.getLogText("text"), /Gol da primeira/);
+  assert.match(game.getLogText("text"), /Passe da segunda/);
 });

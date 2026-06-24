@@ -11,6 +11,8 @@ The current product surface is a live match simulator: two teams line up in a 4-
 - Match: a simulated football game with two periods, stoppage time, score, state transitions, and restarts.
 - Team: one side of the match. Each team has identity, colors, venue, direction of attack, formation, players, and score.
 - Player: a member of a team with a stable shirt number, overall rating, ordered preferred positions, and a current on-field role.
+- Player attribute: a stable capability used to resolve the actions suited to it: pace, passing, vision, control, finishing, defending, positioning, or goalkeeping.
+- Player match statistics: observed production during one match, such as touches, distance covered, passes, shots, goals, interceptions, recoveries, carries, and saves.
 - Preferred position: a role a player is suited to occupy, ordered from strongest preference to weaker alternatives.
 - Lineup assignment: the allocation of players to formation slots. Higher-overall players claim compatible preferred slots first; unassigned players fill the remaining slots.
 - Formation: a set of tactical slots, each defined by an on-field role and base position. The only implemented formation is `4-4-2`.
@@ -23,10 +25,11 @@ The current product surface is a live match simulator: two teams line up in a 4-
 - Fullback cover: the same-side center back's responsibility to protect the channel behind an advanced fullback.
 - Pressure: a normalized measure of how strongly nearby opponents are affecting the player on the ball or a receiving option.
 - Space score: a normalized measure of how useful or open a player's receiving position is.
-- Event log: structured match events with fan-facing copy and analytics data. Key moments are rendered in the visible timeline; all events can be copied as text.
+- Event log: structured match events with fan-facing copy and analytics data. The visible timeline shows the current match, while the hidden session log accumulates every match played until the page is reloaded.
 - Match event: one recorded football action or match-state change, with human copy, structured event data, tactical context, and export metadata.
 - Telemetry export: machine-readable match log data used to inspect patterns across a simulated match.
 - Realism signal: a derived metric from match events that points to possible simulation tuning, such as pass completion, shot volume, turnover volume, pressure, and pass directness.
+- Simulation report: an aggregate of seeded matches containing team results, player production, playing-style metrics, and realism signals.
 
 ## Match State
 
@@ -49,11 +52,11 @@ Important tactical concepts:
 
 - Defensive line height and compactness keep the team shape coherent.
 - Build-up rules prefer center backs, fullbacks, the holding midfielder, and playmaker options.
-- Passing weights consider proximity, forward progress, lane safety, receiving pressure, space, switch options, combinations, counter state, and player overall.
+- Passing weights consider proximity, forward progress, lane safety, receiving pressure, space, role, passing, vision, control, and positioning.
 - Final-third actions can become through balls or crosses before a shot.
 - Offside is modeled using attacking progress, defensive line progress, ball position, and eligibility.
 - Dribbles depend on role, pressure, marker distance, cooldown, and overall ratings.
-- Shots depend on role, distance to goal, pressure, and player overall.
+- Shots depend on role, distance to goal, pressure, finishing, control, positioning, and the opposing goalkeeper.
 - Counter-attacks and post-loss press are temporary team states after possession changes.
 
 ## UI Model
@@ -68,21 +71,23 @@ The field uses percentage coordinates from `0` to `100`. Player tokens and the b
 
 ## Code Organization
 
-Runtime behavior is divided across two modules:
+Runtime behavior is organized by responsibility:
 
-- `src/match-engine.js`: headless match state, fixed-step timing, formations, movement, tactical decisions, ball lifecycle, scoring, statistics, and domain events.
-- `src/browser-game-adapter.js`: team configuration, DOM creation, controls, animation loop, rendering, timeline, modal, and exports.
+- `src/config/teams.js`: editable team, player, color, role, overall, and attribute data.
+- `src/domain/match-engine.js`: headless match state, fixed-step timing, movement, decisions, ball lifecycle, scoring, statistics, and domain events.
+- `src/analytics/match-analysis.js`: seeded batch simulation and aggregate reports.
+- `src/ui/browser-game-adapter.js`: DOM, controls, animation loop, rendering, timeline, modal, and exports.
+- `scripts/analyze-matches.js`: command-line entry point for automated simulation analysis.
 
-The CSS and HTML remain inline in `index.html`, which loads the two plain scripts and continues to work when opened directly.
+The CSS and HTML remain inline in `index.html`, which loads the plain scripts and continues to work when opened directly.
 
 ## Current Constraints
 
-- Browser-only JavaScript; no dependencies are currently installed.
+- No backend, build step, or third-party runtime dependencies are currently installed; Node is used only for tests and batch analysis.
 - Match randomness is generated from a seed, so headless simulations are reproducible.
 - Automated tests use Node's built-in test runner and execute with `node --test`.
 - The current repository has only one app context.
-- The legacy inline simulation source remains embedded but inert while the extracted engine and adapter are validated.
 
 ## Development Notes
 
-For local development, run `node --test`, then open `index.html` directly for visual verification. High-value automated targets are engine behavior through `command`, `advance`, `getSnapshot`, and `drainEvents`, plus browser-adapter smoke tests.
+For local development, run `node --test`, then open `index.html` directly for visual verification. Use `node scripts/analyze-matches.js --matches 100 --seed 1` for a deterministic simulation report.

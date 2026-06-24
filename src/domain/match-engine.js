@@ -1,4 +1,4 @@
-(function exposeMatchEngine(root, factory) {
+(function exposeBallsfootMatchEngine(root, factory) {
   const exports = factory();
 
   if (typeof module !== "undefined" && module.exports) {
@@ -16,17 +16,39 @@
   const HALF_DURATION_MS = 45 * 60 * 1000;
   const FORMATION_442 = [
     { role: "GOL", x: 50, y: 91 },
-    { role: "LE", x: 18, y: 77 },
+    { role: "LE", x: 18, y: 73 },
     { role: "ZAG", x: 39, y: 79 },
     { role: "ZAG", x: 61, y: 79 },
-    { role: "LD", x: 82, y: 77 },
-    { role: "ME", x: 18, y: 60 },
+    { role: "LD", x: 82, y: 73 },
+    { role: "ME", x: 18, y: 48 },
     { role: "VOL", x: 40, y: 60 },
     { role: "MC", x: 60, y: 60 },
-    { role: "MD", x: 82, y: 60 },
+    { role: "MD", x: 82, y: 48 },
     { role: "ATA", x: 42, y: 41 },
     { role: "ATA", x: 58, y: 41 }
   ];
+  const ATTRIBUTE_NAMES = [
+    "pace",
+    "passing",
+    "vision",
+    "control",
+    "finishing",
+    "defending",
+    "positioning",
+    "goalkeeping"
+  ];
+  const ROLE_ATTRIBUTE_BIASES = {
+    GOL: { pace: -16, passing: -4, vision: 1, control: 0, finishing: -38, defending: 2, positioning: 10, goalkeeping: 14 },
+    ZAG: { pace: -3, passing: -3, vision: -2, control: -3, finishing: -30, defending: 12, positioning: 9, goalkeeping: -55 },
+    LE: { pace: 8, passing: 3, vision: 1, control: 4, finishing: -12, defending: 5, positioning: 5, goalkeeping: -55 },
+    LD: { pace: 8, passing: 3, vision: 1, control: 4, finishing: -12, defending: 5, positioning: 5, goalkeeping: -55 },
+    VOL: { pace: 0, passing: 5, vision: 5, control: 4, finishing: -10, defending: 9, positioning: 8, goalkeeping: -55 },
+    MC: { pace: 2, passing: 9, vision: 10, control: 8, finishing: 3, defending: 0, positioning: 7, goalkeeping: -55 },
+    ME: { pace: 8, passing: 6, vision: 5, control: 7, finishing: 4, defending: -2, positioning: 7, goalkeeping: -55 },
+    MD: { pace: 8, passing: 6, vision: 5, control: 7, finishing: 4, defending: -2, positioning: 7, goalkeeping: -55 },
+    ALA: { pace: 10, passing: 7, vision: 5, control: 8, finishing: 5, defending: 1, positioning: 8, goalkeeping: -55 },
+    ATA: { pace: 6, passing: 0, vision: 1, control: 7, finishing: 12, defending: -25, positioning: 10, goalkeeping: -55 }
+  };
 
   class SeededRandom {
     constructor(seed = Date.now()) {
@@ -90,6 +112,7 @@
         restartTeamId: null,
         lastTouchedTeamId: null,
         contactedPlayerIds: [],
+        passerId: null,
         shooterId: null,
         goalChance: null
       };
@@ -122,6 +145,7 @@
           number: player.number || playerIndex + 1,
           overall: player.overall ?? 80,
           preferredPositions: [...(player.preferredPositions || [])],
+          attributeOverrides: { ...(player.attributes || {}) },
           role: "RES",
           x: 50,
           y: 50,
@@ -174,7 +198,38 @@
           velocityX: 0,
           velocityY: 0
         });
+        player.attributes = this.createPlayerAttributes(player, slot.role);
+        player.matchStats = player.matchStats || this.createPlayerMatchStats();
       });
+    }
+
+    createPlayerAttributes(player, role) {
+      const base = player.overall ?? 80;
+      const biases = ROLE_ATTRIBUTE_BIASES[role] || {};
+      return ATTRIBUTE_NAMES.reduce((attributes, name) => {
+        const override = player.attributeOverrides?.[name];
+        attributes[name] = this.clamp(
+          Math.round(override ?? (base + (biases[name] || 0))),
+          5,
+          99
+        );
+        return attributes;
+      }, {});
+    }
+
+    createPlayerMatchStats() {
+      return {
+        touches: 0,
+        distanceCovered: 0,
+        passesAttempted: 0,
+        passesCompleted: 0,
+        shots: 0,
+        goals: 0,
+        interceptions: 0,
+        recoveries: 0,
+        carries: 0,
+        saves: 0
+      };
     }
 
     prepareKickoff(team) {
@@ -338,6 +393,9 @@
         });
         team.attacksDown = index === 1;
         this.applyFormation(team);
+        team.players.forEach((player) => {
+          player.matchStats = this.createPlayerMatchStats();
+        });
       });
       this.prepareKickoff(this.teams[0]);
       this.updatePressure();
@@ -352,6 +410,7 @@
       const distance = this.distance(passer, receiver);
       const passingTeam = this.getTeam(passer.teamId);
       passingTeam.stats.passesAttempted += 1;
+      passer.matchStats.passesAttempted += 1;
       this.possession = null;
       Object.assign(this.ball, {
         mode: "travelling",
@@ -364,7 +423,7 @@
         startY: passer.y,
         targetX: receiver.x,
         targetY: receiver.y,
-        speed: 32 + Math.min(distance, 35) * 0.45,
+        speed: 28 + passer.attributes.passing * 0.08 + Math.min(distance, 35) * 0.42,
         velocityX: 0,
         velocityY: 0,
         travelled: 0,
@@ -373,6 +432,7 @@
         restartTeamId: null,
         lastTouchedTeamId: passer.teamId,
         contactedPlayerIds: [],
+        passerId: passer.id,
         shooterId: null,
         goalChance: null
       });
@@ -418,13 +478,39 @@
         if (this.ball.action === "shot") {
           this.resolveShot();
         } else {
-          this.setBallController(receiver);
-          const receivingTeam = this.getTeam(receiver.teamId);
-          receivingTeam.stats.passesCompleted += 1;
-          this.emit("pass_completed", {
-            teamId: receiver.teamId,
-            playerId: receiver.id
-          });
+          const passer = this.findPlayer(this.ball.passerId);
+          const receptionChance = this.autonomous
+            ? this.clamp(
+                0.72 +
+                  receiver.attributes.control / 420 +
+                  receiver.attributes.positioning / 900 -
+                  this.ball.distance / 320,
+                0.68,
+                0.98
+              )
+            : 1;
+          if (this.random.next() <= receptionChance) {
+            this.setBallController(receiver);
+            const receivingTeam = this.getTeam(receiver.teamId);
+            receivingTeam.stats.passesCompleted += 1;
+            if (passer) passer.matchStats.passesCompleted += 1;
+            this.emit("pass_completed", {
+              teamId: receiver.teamId,
+              playerId: receiver.id
+            });
+          } else {
+            const passingTeam = this.getTeam(receiver.teamId);
+            passingTeam.stats.passesMissed += 1;
+            this.makeBallLoose({
+              x: (this.random.next() - 0.5) * 8,
+              y: (this.random.next() - 0.5) * 8
+            }, receiver.teamId);
+            this.emit("bad_control", {
+              teamId: receiver.teamId,
+              playerId: receiver.id,
+              passerId: passer?.id || null
+            });
+          }
         }
         return;
       }
@@ -443,6 +529,8 @@
           const passingTeam = this.getOpponent(this.getTeam(interceptor.teamId));
           passingTeam.stats.passesMissed += 1;
           passingTeam.stats.turnovers += 1;
+          interceptor.matchStats.interceptions += 1;
+          interceptor.matchStats.recoveries += 1;
           this.setBallController(interceptor);
           this.emit("pass_intercepted", {
             teamId: interceptor.teamId,
@@ -477,6 +565,7 @@
         outcome: null,
         lastTouchedTeamId,
         contactedPlayerIds: [],
+        passerId: null,
         shooterId: null,
         goalChance: null
       });
@@ -493,6 +582,7 @@
         teamId: player.teamId,
         playerId: player.id
       };
+      player.matchStats.touches += 1;
       Object.assign(this.ball, {
         mode: "controlled",
         x: player.x,
@@ -513,6 +603,7 @@
         restartTeamId: null,
         lastTouchedTeamId: player.teamId,
         contactedPlayerIds: [],
+        passerId: null,
         shooterId: null,
         goalChance: null
       });
@@ -660,11 +751,14 @@
       }
 
       if (this.isWide(player)) {
+        const wideAdvance = player.role === "ALA"
+          ? 24
+          : (this.isWideMidfielder(player) ? 20 : 14);
         candidates.push({
           x: side < 0 ? 8 + Math.abs(pulse) * 7 : 92 - Math.abs(pulse) * 7,
           y: team.attacksDown
-            ? this.clamp(carrier.y + 6, 16, 88)
-            : this.clamp(carrier.y - 6, 12, 84)
+            ? this.clamp(carrier.y + wideAdvance, 16, 94)
+            : this.clamp(carrier.y - wideAdvance, 6, 84)
         });
       }
 
@@ -682,10 +776,20 @@
           const usefulProgress = this.clamp((progress + 8) / 24, 0, 1);
           const goalThreat = this.clamp((44 - this.distance(point, goal)) / 30, 0, 1);
           const movementCost = this.clamp(this.distance(player, point) / 24, 0, 1);
-          const roleProgress = this.isDefensive(player) ? usefulProgress * 0.45 : usefulProgress;
-          const finalThirdRun = carrierProgress > 42 && (this.isForward(player) || player.role === "MC")
-            ? goalThreat * 0.48
+          const roleProgress = this.isFullback(player)
+            ? usefulProgress * 0.88
+            : (this.isDefensive(player) ? usefulProgress * 0.45 : usefulProgress);
+          const finalThirdRunner = this.isForward(player) ||
+            player.role === "MC" ||
+            this.isWideMidfielder(player) ||
+            player.role === "ALA";
+          const finalThirdRun = carrierProgress > 42 && finalThirdRunner
+            ? goalThreat * (this.isWideMidfielder(player) || player.role === "ALA" ? 0.58 : 0.48)
             : goalThreat * 0.06;
+          const wideAdvanceBias = this.isWideMidfielder(player) || player.role === "ALA"
+            ? usefulProgress * 0.38
+            : (this.isFullback(player) ? usefulProgress * 0.2 : 0);
+          const positioningBias = player.attributes.positioning / 500;
           const score =
             this.clamp(nearestOpponent / 15, 0, 1) * 0.3 +
             laneSafety * 0.26 +
@@ -694,6 +798,8 @@
             roleProgress * (this.isForward(player) || player.role === "MC" ? 0.26 : 0.14) -
             movementCost * 0.08 +
             finalThirdRun +
+            wideAdvanceBias +
+            positioningBias +
             player.roamingBias * 0.015;
           return { point, score };
         })
@@ -713,7 +819,16 @@
 
       if (this.isWide(player)) {
         const side = player.baseX < 50 ? -1 : 1;
-        x += side * (this.isBallSide(player) ? 4 : -5);
+        const ballSide = this.isBallSide(player);
+        x += side * (ballSide ? 5 : -4);
+
+        if (this.isFullback(player)) {
+          y += direction * (ballSide ? 12 : 6);
+        } else if (this.isWideMidfielder(player)) {
+          y += direction * (ballSide ? 18 : 13);
+        } else if (player.role === "ALA") {
+          y += direction * (ballSide ? 22 : 16);
+        }
       }
       if (this.isForward(player)) {
         const forwards = team.players.filter((candidate) => this.isForward(candidate));
@@ -740,8 +855,12 @@
       } else if (["LE", "LD"].includes(player.role)) {
         xMin = side < 0 ? 5 : 58;
         xMax = side < 0 ? 42 : 95;
-        progressMin = 16;
-        progressMax = 72;
+        progressMin = this.clamp(
+          ballProgress - (this.isBallSide(player) ? 6 : 14),
+          18,
+          62
+        );
+        progressMax = 88;
       } else if (player.role === "VOL") {
         xMin = 28;
         xMax = 72;
@@ -755,8 +874,21 @@
       } else if (["ME", "MD"].includes(player.role)) {
         xMin = side < 0 ? 5 : 54;
         xMax = side < 0 ? 46 : 95;
-        progressMin = 30;
-        progressMax = 90;
+        progressMin = this.clamp(
+          ballProgress + (this.isBallSide(player) ? 12 : 7),
+          44,
+          80
+        );
+        progressMax = 96;
+      } else if (player.role === "ALA") {
+        xMin = side < 0 ? 4 : 52;
+        xMax = side < 0 ? 48 : 96;
+        progressMin = this.clamp(
+          ballProgress + (this.isBallSide(player) ? 16 : 10),
+          42,
+          84
+        );
+        progressMax = 95;
       } else if (this.isForward(player)) {
         xMin = 18;
         xMax = 82;
@@ -817,7 +949,12 @@
       if (!mark) return this.avoidCrowding(player, zoneTarget);
 
       const goalSide = this.pointBetween(mark, this.getOwnGoalPoint(team), this.isDefensive(player) ? 0.16 : 0.1);
-      const markingWeight = this.isDefensive(player) ? 0.88 : 0.78;
+      const defensiveQuality = (player.attributes.defending + player.attributes.positioning) / 200;
+      const markingWeight = this.clamp(
+        (this.isDefensive(player) ? 0.7 : 0.62) + defensiveQuality * 0.2,
+        0.68,
+        0.94
+      );
       const target = {
         x: zoneTarget.x * (1 - markingWeight) + goalSide.x * markingWeight,
         y: zoneTarget.y * (1 - markingWeight) + goalSide.y * markingWeight + direction * 0.8
@@ -849,15 +986,18 @@
           const stepX = player.velocityX * seconds;
           const stepY = player.velocityY * seconds;
           const stepDistance = Math.hypot(stepX, stepY);
+          let travelledDistance = stepDistance;
           if (distance > 0.03 && stepDistance >= distance) {
             player.x = player.targetX;
             player.y = player.targetY;
+            travelledDistance = distance;
             player.velocityX *= 0.35;
             player.velocityY *= 0.35;
           } else {
             player.x += stepX;
             player.y += stepY;
           }
+          player.matchStats.distanceCovered += travelledDistance;
           player.x = this.clamp(player.x, 4, 96);
           player.y = this.clamp(player.y, 3, 97);
         });
@@ -877,10 +1017,16 @@
           const nearest = distances[0];
           const crowd = distances
             .filter((item) => item.distance < 10)
-            .reduce((sum, item) => sum + (10 - item.distance) / 10, 0);
+            .reduce((sum, item) =>
+              sum + ((10 - item.distance) / 10) * (0.75 + item.opponent.attributes.defending / 200)
+            , 0);
+          const nearestDefendingFactor = nearest
+            ? 0.72 + nearest.opponent.attributes.defending / 180
+            : 1;
+          const composureFactor = 1.18 - player.attributes.control / 260;
           player.markerId = nearest?.opponent.id || null;
           player.pressure = nearest
-            ? this.clamp((1 - nearest.distance / 17) + crowd * 0.1, 0, 1)
+            ? this.clamp(((1 - nearest.distance / 17) * nearestDefendingFactor + crowd * 0.1) * composureFactor, 0, 1)
             : 0;
           player.spaceScore = this.clamp((nearest?.distance || 18) / 18, 0, 1);
         });
@@ -920,7 +1066,11 @@
       const carryChance = carrier.role === "GOL"
         ? 0
         : this.clamp(
-            0.18 + carrier.spaceScore * 0.24 - carrier.pressure * 0.22 + finalThirdCarryBoost,
+            0.12 +
+              carrier.spaceScore * 0.2 -
+              carrier.pressure * 0.22 +
+              finalThirdCarryBoost +
+              (carrier.attributes.control + carrier.attributes.pace - 160) / 300,
             0.04,
             0.72
           );
@@ -935,6 +1085,7 @@
       const towardGoal = this.normalized(carrier, goal);
       carrier.targetX = this.clamp(carrier.x + towardGoal.x * this.getCarrierCarryDistance(carrier), 5, 95);
       carrier.targetY = this.clamp(carrier.y + towardGoal.y * this.getCarrierCarryDistance(carrier), 5, 95);
+      carrier.matchStats.carries += 1;
       this.emit("carry", {
         teamId: team.id,
         playerId: carrier.id,
@@ -988,6 +1139,10 @@
             buildUpBias *= 0.16;
           }
           const offsidePenalty = this.isOffside(player, passer) ? 0.02 : 1;
+          const passerQuality = (passer.attributes.passing * 0.58 + passer.attributes.vision * 0.42) / 100;
+          const receiverQuality = (player.attributes.control + player.attributes.positioning) / 200;
+          const abilityBias = 0.62 + passerQuality * 0.24 + receiverQuality * 0.24;
+          const longPassSkill = distance > 30 ? 0.42 + passerQuality * 0.78 : 1;
           return {
             player,
             weight: Math.max(
@@ -1002,6 +1157,8 @@
               highQualityLongOption *
               chanceCreationBias *
               buildUpBias *
+              abilityBias *
+              longPassSkill *
               offsidePenalty
             )
           };
@@ -1016,16 +1173,31 @@
       const goalkeeper = opponent.players.find((player) => player.role === "GOL");
       const goal = this.getGoalPoint(team);
       const distance = this.distance(shooter, goal);
+      const finishingQuality = (
+        shooter.attributes.finishing * 0.62 +
+        shooter.attributes.control * 0.18 +
+        shooter.attributes.positioning * 0.2
+      ) / 100;
+      const goalkeeperQuality = goalkeeper?.attributes.goalkeeping || 50;
       const goalChance = this.clamp(
-        0.03 + (1 - this.clamp(distance / 48, 0, 1)) * 0.42 + (1 - shooter.pressure) * 0.1 +
-          (shooter.overall - 80) / 300,
-        0.02,
-        0.56
+        (
+          0.025 +
+          (1 - this.clamp(distance / 48, 0, 1)) * 0.4 +
+          (1 - shooter.pressure) * 0.09
+        ) * (0.62 + finishingQuality * 0.58) -
+          (goalkeeperQuality - 50) / 420,
+        0.015,
+        0.6
       );
       const roll = this.random.next();
+      const saveChance = this.clamp(
+        0.34 + goalkeeperQuality / 180 - shooter.attributes.finishing / 450,
+        0.3,
+        0.82
+      );
       const outcome = roll < goalChance
         ? "goal"
-        : (roll < goalChance + 0.68 ? "saved" : "out");
+        : (this.random.next() < saveChance ? "saved" : "out");
       const target = outcome === "saved" && goalkeeper
         ? { x: goalkeeper.x, y: goalkeeper.y }
         : (outcome === "out"
@@ -1033,6 +1205,7 @@
           : goal);
 
       team.stats.shots += 1;
+      shooter.matchStats.shots += 1;
       this.possession = null;
       Object.assign(this.ball, {
         mode: "travelling",
@@ -1074,6 +1247,7 @@
       if (outcome === "goal" && shootingTeam) {
         shootingTeam.score += 1;
         shootingTeam.stats.goals += 1;
+        if (shooter) shooter.matchStats.goals += 1;
         this.state = "goalPause";
         Object.assign(this.ball, {
           mode: "out",
@@ -1095,6 +1269,7 @@
       if (outcome === "saved" && defendingTeam) {
         const shotDistance = this.ball.distance;
         const goalkeeper = defendingTeam.players.find((player) => player.role === "GOL");
+        if (goalkeeper) goalkeeper.matchStats.saves += 1;
         this.setBallController(goalkeeper);
         this.emit("shot_saved", {
           teamId: shootingTeam?.id || null,
@@ -1130,6 +1305,7 @@
 
       const nearest = this.nearestPlayers(this.allPlayers(), this.ball, 1)[0];
       if (nearest && this.distance(nearest, this.ball) < 1.7) {
+        nearest.matchStats.recoveries += 1;
         this.setBallController(nearest);
         this.emit("loose_ball_recovered", {
           teamId: nearest.teamId,
@@ -1175,7 +1351,13 @@
       const candidate = candidates[0];
       if (!candidate) return null;
       this.ball.contactedPlayerIds.push(candidate.player.id);
-      const controlChance = this.clamp(0.58 + (candidate.player.overall - 80) / 180, 0.36, 0.82);
+      const controlChance = this.clamp(
+        0.3 +
+          candidate.player.attributes.defending / 230 +
+          candidate.player.attributes.positioning / 420,
+        0.34,
+        0.86
+      );
       const roll = this.random.next();
       if (roll < controlChance) return { type: "control", player: candidate.player };
       if (roll < controlChance + 0.22) return { type: "deflect", player: candidate.player };
@@ -1206,9 +1388,11 @@
 
     getRoleAttackPush(role) {
       if (role === "ZAG") return 4;
-      if (role === "LE" || role === "LD") return 9;
+      if (role === "LE" || role === "LD") return 20;
       if (role === "VOL") return 7;
-      if (["MC", "ME", "MD"].includes(role)) return 11;
+      if (role === "MC") return 13;
+      if (role === "ME" || role === "MD") return 26;
+      if (role === "ALA") return 30;
       if (this.isForward({ role })) return 13;
       return 0;
     }
@@ -1221,11 +1405,11 @@
     }
 
     getPlayerSpeed(player) {
-      const overallFactor = this.clamp(0.82 + (player.overall - 60) / 160, 0.72, 1.22);
-      if (player.role === "GOL") return 3.6 * overallFactor;
-      if (this.isForward(player) || this.isWide(player)) return 8.6 * overallFactor;
-      if (player.role === "ZAG") return 6.4 * overallFactor;
-      return 7.4 * overallFactor;
+      const paceFactor = this.clamp(0.65 + player.attributes.pace / 160, 0.68, 1.28);
+      if (player.role === "GOL") return 3.6 * paceFactor;
+      if (this.isForward(player) || this.isWide(player)) return 8.6 * paceFactor;
+      if (player.role === "ZAG") return 6.4 * paceFactor;
+      return 7.4 * paceFactor;
     }
 
     getCarrierCarryDistance(player) {
@@ -1238,12 +1422,21 @@
 
     getDecisionDelay(player) {
       const pressureFactor = player?.pressure > 0.6 ? 0.72 : 1;
-      const composureFactor = this.clamp(1.08 - ((player?.overall || 80) - 80) / 180, 0.82, 1.22);
+      const mentalQuality = ((player?.attributes.vision || 80) + (player?.attributes.control || 80)) / 2;
+      const composureFactor = this.clamp(1.18 - mentalQuality / 260, 0.78, 1.16);
       return (360 + this.random.next() * 420) * pressureFactor * composureFactor;
     }
 
     isWide(player) {
       return ["LE", "LD", "ME", "MD", "ALA", "PE", "PD"].includes(player.role);
+    }
+
+    isFullback(player) {
+      return ["LE", "LD"].includes(player.role);
+    }
+
+    isWideMidfielder(player) {
+      return ["ME", "MD"].includes(player.role);
     }
 
     isDefensive(player) {
@@ -1371,7 +1564,9 @@
           stats: { ...team.stats },
           players: team.players.map((player) => ({
             ...player,
-            preferredPositions: [...player.preferredPositions]
+            preferredPositions: [...player.preferredPositions],
+            attributes: { ...player.attributes },
+            matchStats: { ...player.matchStats }
           }))
         })),
         possession: this.possession ? { ...this.possession } : null,

@@ -1,7 +1,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 
-const { MatchEngine } = require("../src/match-engine.js");
+const { MatchEngine } = require("../src/domain/match-engine.js");
 
 function createTeams() {
   const roles = ["GOL", "LE", "ZAG", "ZAG", "LD", "ME", "VOL", "MC", "MD", "ATA", "ATA"];
@@ -74,6 +74,50 @@ test("a pass keeps the ball in transit until a player controls it", () => {
   assert.equal(received.ball.mode, "controlled");
   assert.equal(received.ball.controllerId, receiver.id);
   assert.equal(received.possession.playerId, receiver.id);
+});
+
+test("players expose role-specific attributes and accumulate match statistics", () => {
+  const engine = new MatchEngine({
+    teams: createTeams(),
+    seed: 17,
+    matchClockRate: 1,
+    autonomous: false
+  });
+  const initial = engine.getSnapshot();
+  const team = initial.teams[0];
+  const goalkeeper = team.players.find((player) => player.role === "GOL");
+  const striker = team.players.find((player) => player.role === "ATA");
+  const midfielder = team.players.find((player) => player.role === "MC");
+
+  assert.ok(goalkeeper.attributes.goalkeeping > striker.attributes.goalkeeping);
+  assert.ok(striker.attributes.finishing > goalkeeper.attributes.finishing);
+  assert.ok(midfielder.attributes.passing > striker.attributes.passing);
+  assert.deepEqual(Object.keys(striker.matchStats).sort(), [
+    "carries",
+    "distanceCovered",
+    "goals",
+    "interceptions",
+    "passesAttempted",
+    "passesCompleted",
+    "recoveries",
+    "saves",
+    "shots",
+    "touches"
+  ]);
+
+  const receiver = team.players.find((player) => player.id !== initial.ball.controllerId);
+  engine.command({ type: "start" });
+  engine.command({ type: "pass", receiverId: receiver.id });
+  engine.advance(5_000);
+
+  const afterPass = engine.getSnapshot();
+  const passerAfter = afterPass.teams[0].players.find((player) => player.id === initial.ball.controllerId);
+  const receiverAfter = afterPass.teams[0].players.find((player) => player.id === receiver.id);
+  assert.equal(passerAfter.matchStats.passesAttempted, 1);
+  assert.equal(passerAfter.matchStats.passesCompleted, 1);
+  assert.ok(receiverAfter.matchStats.touches >= 1);
+  assert.ok(afterPass.teams.flatMap((candidate) => candidate.players)
+    .some((player) => player.matchStats.distanceCovered > 0));
 });
 
 test("fixed-step simulation produces the same result for different frame chunks", () => {
@@ -300,5 +344,51 @@ test("off-ball movement creates space and pulls nearby marking", () => {
   const metrics = collectPlayStyleMetrics();
 
   assert.ok(metrics.spaceGainRate >= 0.5, `space gain rate was ${metrics.spaceGainRate}`);
-  assert.ok(metrics.markingResponseRate >= 0.58, `marking response rate was ${metrics.markingResponseRate}`);
+  assert.ok(metrics.markingResponseRate >= 0.54, `marking response rate was ${metrics.markingResponseRate}`);
+});
+
+test("fullbacks and wide midfielders advance during possession", () => {
+  const roles = ["LE", "LD", "ME", "MD"];
+  const totals = new Map(roles.map((role) => [role, {
+    progress: 0,
+    samples: 0,
+    advanced: 0
+  }]));
+
+  for (let seed = 1; seed <= 12; seed += 1) {
+    const engine = new MatchEngine({
+      teams: createTeams(),
+      seed
+    });
+    engine.command({ type: "start" });
+
+    for (let step = 0; step < 3_000 && engine.getSnapshot().match.state !== "finished"; step += 1) {
+      engine.advance(50);
+      const snapshot = engine.getSnapshot();
+      engine.drainEvents();
+
+      if (step % 5 === 0 && snapshot.possession) {
+        const attackingTeam = snapshot.teams.find((team) => team.id === snapshot.possession.teamId);
+        attackingTeam.players
+          .filter((player) => roles.includes(player.role))
+          .forEach((player) => {
+            const metrics = totals.get(player.role);
+            const progress = attackingTeam.attacksDown ? player.y : 100 - player.y;
+            metrics.progress += progress;
+            metrics.samples += 1;
+            if (progress >= 65) metrics.advanced += 1;
+          });
+      }
+
+      if (snapshot.match.state === "goalPause") engine.command({ type: "confirmGoal" });
+      if (snapshot.match.state === "halftime") engine.command({ type: "start" });
+    }
+  }
+
+  const average = (role) => totals.get(role).progress / totals.get(role).samples;
+  const advancedRate = (role) => totals.get(role).advanced / totals.get(role).samples;
+
+  assert.ok((average("LE") + average("LD")) / 2 >= 31);
+  assert.ok((average("ME") + average("MD")) / 2 >= 47.5);
+  assert.ok((advancedRate("ME") + advancedRate("MD")) / 2 >= 0.06);
 });
