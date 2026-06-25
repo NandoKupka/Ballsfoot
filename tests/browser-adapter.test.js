@@ -134,6 +134,19 @@ test("the browser adapter initializes the engine and mounts every player", () =>
   assert.equal(context.tacticsGame.playerElements.size, 22);
   assert.equal(document.getElementById("clock").textContent, "00'");
   assert.equal(document.getElementById("score").textContent, "0 x 0");
+
+  const restartSnapshot = context.tacticsGame.engine.getSnapshot();
+  restartSnapshot.ball.mode = "out";
+  restartSnapshot.ball.restartReason = "corner";
+  context.tacticsGame.renderStatus(restartSnapshot);
+  assert.match(document.getElementById("status-text").textContent, /Escanteio/);
+
+  const cornerEntry = context.tacticsGame.describeEvent({
+    type: "corner_awarded",
+    matchMs: 0,
+    data: { teamId: restartSnapshot.teams[0].id }
+  }, restartSnapshot);
+  assert.equal(cornerEntry.title, "Escanteio");
 });
 
 test("hidden export logs accumulate while the visible match log resets", () => {

@@ -81,6 +81,318 @@ test("a pass keeps the ball in transit until a player controls it", () => {
   assert.equal(received.possession.playerId, receiver.id);
 });
 
+test("a defensive deflection becomes immediate possession and counts as an interception", () => {
+  const engine = new MatchEngine({
+    teams: createTeams(),
+    seed: 11,
+    matchClockRate: 1,
+    autonomous: false
+  });
+  const passer = engine.getController();
+  const passingTeam = engine.getTeam(passer.teamId);
+  const receiver = passingTeam.players.find((player) => player !== passer);
+  const interceptor = engine.getOpponent(passingTeam).players.find((player) => player.role !== "GOL");
+
+  engine.command({ type: "start" });
+  engine.performPass(receiver.id);
+  engine.findBallContact = () => ({ type: "deflect", player: interceptor });
+  engine.updateBall(50);
+
+  assert.equal(engine.ball.mode, "controlled");
+  assert.equal(engine.ball.controllerId, interceptor.id);
+  assert.equal(engine.possession.teamId, interceptor.teamId);
+  assert.equal(engine.possession.playerId, interceptor.id);
+  assert.equal(interceptor.matchStats.interceptions, 1);
+  assert.equal(interceptor.matchStats.recoveries, 1);
+  assert.equal(passingTeam.stats.passesMissed, 1);
+  assert.equal(passingTeam.stats.turnovers, 1);
+
+  const interception = engine.drainEvents().find((event) => event.type === "pass_intercepted");
+  assert.equal(interception.data.playerId, interceptor.id);
+  assert.equal(interception.data.deflected, true);
+});
+
+test("a loose ball crossing the touchline awards a throw-in to the opponent of the last touch", () => {
+  const engine = new MatchEngine({
+    teams: createTeams(),
+    seed: 13,
+    matchClockRate: 1,
+    autonomous: false
+  });
+  const lastTouchTeam = engine.teams[0];
+  const receivingTeam = engine.teams[1];
+
+  engine.command({ type: "start" });
+  Object.assign(engine.ball, {
+    mode: "loose",
+    x: 0.8,
+    y: 58,
+    velocityX: -4,
+    velocityY: 0,
+    lastTouchedTeamId: lastTouchTeam.id
+  });
+  engine.possession = null;
+  engine.updateLooseBall(50);
+
+  assert.equal(engine.ball.mode, "out");
+  assert.equal(engine.ball.restartReason, "throw_in");
+  assert.equal(engine.ball.restartTeamId, receivingTeam.id);
+  assert.equal(engine.ball.restartX, 1);
+  assert.equal(engine.ball.restartY, 58);
+});
+
+test("the last touch at the end line distinguishes a corner from a goal kick", () => {
+  const createEndLineEngine = () => {
+    const engine = new MatchEngine({
+      teams: createTeams(),
+      seed: 15,
+      matchClockRate: 1,
+      autonomous: false
+    });
+    engine.command({ type: "start" });
+    return engine;
+  };
+
+  const cornerEngine = createEndLineEngine();
+  const defendingTeam = cornerEngine.getDefendingTeamAtEndLine(0);
+  const attackingTeam = cornerEngine.getOpponent(defendingTeam);
+  Object.assign(cornerEngine.ball, {
+    mode: "loose",
+    x: 20,
+    y: 0.5,
+    velocityX: 0,
+    velocityY: -3,
+    lastTouchedTeamId: defendingTeam.id
+  });
+  cornerEngine.possession = null;
+  cornerEngine.updateLooseBall(50);
+
+  assert.equal(cornerEngine.ball.restartReason, "corner");
+  assert.equal(cornerEngine.ball.restartTeamId, attackingTeam.id);
+
+  const goalKickEngine = createEndLineEngine();
+  const goalKickDefendingTeam = goalKickEngine.getDefendingTeamAtEndLine(0);
+  const goalKickAttackingTeam = goalKickEngine.getOpponent(goalKickDefendingTeam);
+  Object.assign(goalKickEngine.ball, {
+    mode: "loose",
+    x: 70,
+    y: 0.5,
+    velocityX: 0,
+    velocityY: -3,
+    lastTouchedTeamId: goalKickAttackingTeam.id
+  });
+  goalKickEngine.possession = null;
+  goalKickEngine.updateLooseBall(50);
+
+  assert.equal(goalKickEngine.ball.restartReason, "goal_kick");
+  assert.equal(goalKickEngine.ball.restartTeamId, goalKickDefendingTeam.id);
+});
+
+test("a throw-in restart returns controlled possession to a nearby outfield player", () => {
+  const engine = new MatchEngine({
+    teams: createTeams(),
+    seed: 17,
+    matchClockRate: 1,
+    autonomous: false
+  });
+  const team = engine.teams[1];
+  engine.command({ type: "start" });
+  engine.scheduleRestart("throw_in", team, { x: 99, y: 62 }, 50);
+  engine.advance(50);
+
+  const controller = engine.getController();
+  assert.equal(engine.ball.mode, "controlled");
+  assert.equal(engine.possession.teamId, team.id);
+  assert.notEqual(controller.role, "GOL");
+  assert.equal(controller.x, 96);
+  assert.equal(team.stats.throwIns, 1);
+});
+
+test("a clean tackle transfers controlled possession to the defender", () => {
+  const engine = new MatchEngine({
+    teams: createTeams(),
+    seed: 19,
+    matchClockRate: 1,
+    autonomous: false
+  });
+  const carrier = engine.getController();
+  const attackingTeam = engine.getTeam(carrier.teamId);
+  const defender = engine.getOpponent(attackingTeam).players.find((player) => player.role !== "GOL");
+
+  engine.command({ type: "start" });
+  engine.resolveTackle(defender, carrier, "won");
+
+  assert.equal(engine.ball.mode, "controlled");
+  assert.equal(engine.ball.controllerId, defender.id);
+  assert.equal(engine.possession.teamId, defender.teamId);
+  assert.equal(defender.matchStats.tacklesAttempted, 1);
+  assert.equal(defender.matchStats.tacklesWon, 1);
+  assert.equal(attackingTeam.stats.turnovers, 1);
+  assert.ok(engine.drainEvents().some((event) => event.type === "tackle_won"));
+});
+
+test("a deflected tackle beside the touchline can immediately produce a throw-in", () => {
+  const engine = new MatchEngine({
+    teams: createTeams(),
+    seed: 20,
+    matchClockRate: 1,
+    autonomous: false
+  });
+  const carrier = engine.getController();
+  const attackingTeam = engine.getTeam(carrier.teamId);
+  const defender = engine.getOpponent(attackingTeam).players.find((player) => player.role !== "GOL");
+  carrier.x = 2;
+  carrier.y = 55;
+  defender.x = 3;
+  defender.y = 55;
+  engine.random.next = () => 0;
+
+  engine.command({ type: "start" });
+  engine.resolveTackle(defender, carrier, "deflected");
+
+  assert.equal(engine.ball.mode, "out");
+  assert.equal(engine.ball.restartReason, "throw_in");
+  assert.equal(engine.ball.restartTeamId, attackingTeam.id);
+});
+
+test("a foul outside the penalty area awards a free kick at the infringement point", () => {
+  const engine = new MatchEngine({
+    teams: createTeams(),
+    seed: 21,
+    matchClockRate: 1,
+    autonomous: false
+  });
+  const carrier = engine.getController();
+  const attackingTeam = engine.getTeam(carrier.teamId);
+  const defendingTeam = engine.getOpponent(attackingTeam);
+  const defender = defendingTeam.players.find((player) => player.role !== "GOL");
+  carrier.x = 50;
+  carrier.y = 50;
+
+  engine.command({ type: "start" });
+  engine.resolveTackle(defender, carrier, "foul");
+
+  assert.equal(engine.ball.mode, "out");
+  assert.equal(engine.ball.restartReason, "free_kick");
+  assert.equal(engine.ball.restartTeamId, attackingTeam.id);
+  assert.equal(engine.ball.restartX, 50);
+  assert.equal(engine.ball.restartY, 50);
+  assert.equal(defender.matchStats.foulsCommitted, 1);
+  assert.equal(carrier.matchStats.foulsWon, 1);
+  assert.equal(defendingTeam.stats.fouls, 1);
+});
+
+test("a defensive foul inside the penalty area awards a penalty", () => {
+  const engine = new MatchEngine({
+    teams: createTeams(),
+    seed: 23,
+    matchClockRate: 1,
+    autonomous: false
+  });
+  const carrier = engine.getController();
+  const attackingTeam = engine.getTeam(carrier.teamId);
+  const defendingTeam = engine.getOpponent(attackingTeam);
+  const defender = defendingTeam.players.find((player) => player.role !== "GOL");
+  const ownGoal = engine.getOwnGoalPoint(defendingTeam);
+  carrier.x = 50;
+  carrier.y = ownGoal.y === 0 ? 10 : 90;
+
+  engine.command({ type: "start" });
+  engine.resolveTackle(defender, carrier, "foul");
+
+  assert.equal(engine.ball.restartReason, "penalty");
+  assert.equal(engine.ball.restartTeamId, attackingTeam.id);
+  assert.equal(attackingTeam.stats.penaltiesWon, 1);
+  assert.equal(defendingTeam.stats.penaltiesConceded, 1);
+  assert.ok(engine.drainEvents().some((event) =>
+    event.type === "foul_committed" && event.data.penalty
+  ));
+});
+
+test("a scored penalty records the shot and enters the normal goal pause", () => {
+  const engine = new MatchEngine({
+    teams: createTeams(),
+    seed: 25,
+    matchClockRate: 1,
+    autonomous: false
+  });
+  const kicker = engine.getController();
+  const team = engine.getTeam(kicker.teamId);
+
+  engine.command({ type: "start" });
+  engine.takePenalty(kicker, "goal");
+
+  assert.equal(team.score, 1);
+  assert.equal(team.stats.shots, 1);
+  assert.equal(team.stats.goals, 1);
+  assert.equal(kicker.matchStats.shots, 1);
+  assert.equal(kicker.matchStats.goals, 1);
+  assert.equal(engine.state, "goalPause");
+  const events = engine.drainEvents();
+  assert.ok(events.some((event) => event.type === "penalty_taken"));
+  assert.ok(events.some((event) => event.type === "penalty_scored"));
+  assert.ok(events.some((event) => event.type === "goal" && event.data.penalty));
+});
+
+test("saved and missed penalties end without a rebound", () => {
+  const savedEngine = new MatchEngine({
+    teams: createTeams(),
+    seed: 27,
+    matchClockRate: 1,
+    autonomous: false
+  });
+  const savedKicker = savedEngine.getController();
+  const savedDefendingTeam = savedEngine.getOpponent(savedEngine.getTeam(savedKicker.teamId));
+  const goalkeeper = savedDefendingTeam.players.find((player) => player.role === "GOL");
+  savedEngine.command({ type: "start" });
+  savedEngine.takePenalty(savedKicker, "saved");
+
+  assert.equal(savedEngine.ball.mode, "controlled");
+  assert.equal(savedEngine.ball.controllerId, goalkeeper.id);
+  assert.equal(goalkeeper.matchStats.saves, 1);
+
+  const missedEngine = new MatchEngine({
+    teams: createTeams(),
+    seed: 29,
+    matchClockRate: 1,
+    autonomous: false
+  });
+  const missedKicker = missedEngine.getController();
+  const missedDefendingTeam = missedEngine.getOpponent(missedEngine.getTeam(missedKicker.teamId));
+  missedEngine.command({ type: "start" });
+  missedEngine.takePenalty(missedKicker, "missed");
+
+  assert.equal(missedEngine.ball.mode, "out");
+  assert.equal(missedEngine.ball.restartReason, "goal_kick");
+  assert.equal(missedEngine.ball.restartTeamId, missedDefendingTeam.id);
+  assert.ok(missedEngine.drainEvents().some((event) => event.type === "penalty_missed"));
+});
+
+test("a goalkeeper parry over the end line awards a corner", () => {
+  const engine = new MatchEngine({
+    teams: createTeams(),
+    seed: 31,
+    matchClockRate: 1,
+    autonomous: false
+  });
+  const shooter = engine.getController();
+  const shootingTeam = engine.getTeam(shooter.teamId);
+  const defendingTeam = engine.getOpponent(shootingTeam);
+
+  engine.command({ type: "start" });
+  engine.performShot(shooter, { outcome: "parried" });
+  engine.advance(5_000);
+
+  assert.equal(engine.ball.mode, "controlled");
+  assert.equal(engine.possession.teamId, shootingTeam.id);
+  assert.equal(shootingTeam.stats.corners, 1);
+  const events = engine.drainEvents();
+  assert.ok(events.some((event) => event.type === "shot_parried"));
+  assert.ok(events.some((event) => event.type === "corner_awarded"));
+  assert.ok(!events.some((event) => event.type === "shot_saved"));
+  assert.equal(defendingTeam.stats.goalKicks, 0);
+});
+
 test("overall is derived from the four attributes and players accumulate match statistics", () => {
   const engine = new MatchEngine({
     teams: createTeams(),
@@ -104,6 +416,8 @@ test("overall is derived from the four attributes and players accumulate match s
   assert.deepEqual(Object.keys(striker.matchStats).sort(), [
     "carries",
     "distanceCovered",
+    "foulsCommitted",
+    "foulsWon",
     "goals",
     "interceptions",
     "offsides",
@@ -113,6 +427,8 @@ test("overall is derived from the four attributes and players accumulate match s
     "recoveries",
     "saves",
     "shots",
+    "tacklesAttempted",
+    "tacklesWon",
     "touches"
   ]);
 

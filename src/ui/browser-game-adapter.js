@@ -258,6 +258,40 @@
           title: "Interceptacao",
           detail: `${player?.name || "Defensor"} corta a trajetoria e assume a posse.`
         },
+        tackle_won: {
+          title: "Desarme",
+          detail: `${player?.name || "Defensor"} ganha o duelo e assume a posse.`
+        },
+        tackle_deflected: {
+          title: "Desarme com desvio",
+          detail: `${player?.name || "Defensor"} toca na bola durante o duelo.`
+        },
+        foul_committed: {
+          title: event.data.penalty ? "Penalti" : "Falta",
+          detail: event.data.penalty
+            ? `${player?.name || "Defensor"} comete a infracao dentro da area.`
+            : `${player?.name || "Defensor"} interrompe a jogada com falta.`
+        },
+        throw_in_awarded: {
+          title: "Lateral",
+          detail: `${team?.shortName || "O time"} ganha a cobranca lateral.`
+        },
+        corner_awarded: {
+          title: "Escanteio",
+          detail: `${team?.shortName || "O time"} ganha o escanteio.`
+        },
+        goal_kick_awarded: {
+          title: "Tiro de meta",
+          detail: `${team?.shortName || "O time"} reinicia desde a defesa.`
+        },
+        free_kick_awarded: {
+          title: "Tiro livre",
+          detail: `${team?.shortName || "O time"} tem uma bola parada.`
+        },
+        penalty_awarded: {
+          title: "Penalti marcado",
+          detail: `${team?.shortName || "O time"} tera a cobranca.`
+        },
         pass_deflected: {
           title: "Passe desviado",
           detail: `${player?.name || "Defensor"} toca na bola, que fica solta.`
@@ -278,6 +312,14 @@
           title: "Defesa",
           detail: "O goleiro controla a finalizacao."
         },
+        shot_parried: {
+          title: "Defesa para escanteio",
+          detail: "O goleiro espalma a finalizacao pela linha de fundo."
+        },
+        shot_blocked: {
+          title: "Chute bloqueado",
+          detail: "Um defensor bloqueia a finalizacao pela linha de fundo."
+        },
         shot_out: {
           title: "Para fora",
           detail: "A finalizacao sai sem acertar o gol."
@@ -285,6 +327,22 @@
         goal: {
           title: "Gol",
           detail: `${player?.name || "Jogador"} manda a bola para a rede.`
+        },
+        penalty_taken: {
+          title: "Cobranca de penalti",
+          detail: `${player?.name || "Jogador"} parte para a bola.`
+        },
+        penalty_scored: {
+          title: "Penalti convertido",
+          detail: `${player?.name || "Jogador"} converte a cobranca.`
+        },
+        penalty_saved: {
+          title: "Penalti defendido",
+          detail: "O goleiro segura a cobranca sem rebote."
+        },
+        penalty_missed: {
+          title: "Penalti perdido",
+          detail: `${player?.name || "Jogador"} manda a cobranca para fora.`
         },
         loose_ball_recovered: {
           title: "Bola recuperada",
@@ -321,7 +379,23 @@
       this.allLogEntries.push(normalized);
       this.currentMatchEntries.push(normalized);
 
-      if (["goal", "shot_started", "shot_saved", "pass_intercepted", "offside", "halftime", "fulltime"].includes(normalized.kind)) {
+      if ([
+        "goal",
+        "shot_started",
+        "shot_saved",
+        "shot_parried",
+        "shot_blocked",
+        "pass_intercepted",
+        "tackle_won",
+        "foul_committed",
+        "corner_awarded",
+        "penalty_awarded",
+        "penalty_saved",
+        "penalty_missed",
+        "offside",
+        "halftime",
+        "fulltime"
+      ].includes(normalized.kind)) {
         this.keyMomentEntries.push(normalized);
       }
 
@@ -409,7 +483,7 @@
       return [
         `${team.name} ${player.number} - ${player.name} (${player.role}) OVR ${player.overall}`,
         `FIS ${attributes.physical} | TEC ${attributes.technique} | INT ${attributes.intelligence} | DEF ${attributes.defense}`,
-        `Partida: ${stats.passesCompleted}/${stats.passesAttempted} passes | ${stats.oneTouchPasses} de primeira | ${stats.offsides} impedimentos | ${stats.shots} chutes | ${stats.goals} gols | ${stats.interceptions} interceptacoes`
+        `Partida: ${stats.passesCompleted}/${stats.passesAttempted} passes | ${stats.oneTouchPasses} de primeira | ${stats.shots} chutes | ${stats.goals} gols | ${stats.interceptions} interceptacoes | ${stats.tacklesWon}/${stats.tacklesAttempted} desarmes | ${stats.foulsCommitted} faltas`
       ].join("\n");
     }
 
@@ -417,7 +491,7 @@
       const totalPossession = snapshot.teams.reduce((sum, team) => sum + team.stats.possessionMatchMs, 0);
       const header = this.document.createElement("div");
       header.className = "match-stats-head";
-      ["Time", "Posse", "Chutes", "Passes", "Erros"].forEach((label) => {
+      ["Time", "Posse", "Chutes", "Passes", "Des.", "Faltas", "BP"].forEach((label) => {
         const cell = this.document.createElement("span");
         cell.textContent = label;
         header.appendChild(cell);
@@ -432,7 +506,9 @@
           `${totalPossession ? Math.round(team.stats.possessionMatchMs / totalPossession * 100) : 50}%`,
           team.stats.shots,
           team.stats.passesCompleted,
-          team.stats.passesMissed
+          `${team.stats.tacklesWon}/${team.stats.tacklesAttempted}`,
+          team.stats.fouls,
+          team.stats.corners + team.stats.throwIns + team.stats.penaltiesWon
         ];
         values.forEach((value, index) => {
           const cell = this.document.createElement("span");
@@ -462,6 +538,21 @@
 
       if (snapshot.ball.mode === "loose") {
         this.statusText.textContent = "Bola solta: disputa pela sobra";
+        return;
+      }
+
+      if (snapshot.ball.mode === "out") {
+        const restartLabels = {
+          throw_in: "Lateral",
+          corner: "Escanteio",
+          goal_kick: "Tiro de meta",
+          free_kick: "Tiro livre",
+          penalty: "Penalti",
+          offside: "Impedimento"
+        };
+        this.statusText.textContent = restartLabels[snapshot.ball.restartReason]
+          ? `${restartLabels[snapshot.ball.restartReason]} aguardando cobranca`
+          : "Bola fora de jogo";
         return;
       }
 

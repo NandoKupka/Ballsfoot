@@ -63,6 +63,13 @@
       oneTouchPasses: 0,
       combinations: 0,
       offsides: 0,
+      tacklesAttempted: 0,
+      tacklesWon: 0,
+      fouls: 0,
+      corners: 0,
+      throwIns: 0,
+      goalKicks: 0,
+      penaltiesWon: 0,
       shotDistance: 0,
       shotEvents: 0
     };
@@ -98,6 +105,14 @@
           passesCompleted: 0,
           oneTouchPasses: 0,
           offsides: 0,
+          tacklesAttempted: 0,
+          tacklesWon: 0,
+          fouls: 0,
+          corners: 0,
+          throwIns: 0,
+          goalKicks: 0,
+          penaltiesWon: 0,
+          penaltiesConceded: 0,
           possessionMatchMs: 0
         };
         aggregate.matches += 1;
@@ -107,6 +122,14 @@
         aggregate.passesCompleted += team.stats.passesCompleted;
         aggregate.oneTouchPasses += team.stats.oneTouchPasses;
         aggregate.offsides += team.stats.offsides;
+        aggregate.tacklesAttempted += team.stats.tacklesAttempted;
+        aggregate.tacklesWon += team.stats.tacklesWon;
+        aggregate.fouls += team.stats.fouls;
+        aggregate.corners += team.stats.corners;
+        aggregate.throwIns += team.stats.throwIns;
+        aggregate.goalKicks += team.stats.goalKicks;
+        aggregate.penaltiesWon += team.stats.penaltiesWon;
+        aggregate.penaltiesConceded += team.stats.penaltiesConceded;
         aggregate.possessionMatchMs += team.stats.possessionMatchMs;
         teamAggregates.set(team.id, aggregate);
 
@@ -131,6 +154,10 @@
             interceptions: 0,
             recoveries: 0,
             carries: 0,
+            tacklesAttempted: 0,
+            tacklesWon: 0,
+            foulsCommitted: 0,
+            foulsWon: 0,
             oneTouchPasses: 0,
             offsides: 0,
             saves: 0
@@ -163,13 +190,24 @@
       totals.passesAttempted += team.passesAttempted;
       totals.passesCompleted += team.passesCompleted;
       totals.offsides += team.offsides;
+      totals.tacklesAttempted += team.tacklesAttempted;
+      totals.tacklesWon += team.tacklesWon;
+      totals.fouls += team.fouls;
+      totals.corners += team.corners;
+      totals.throwIns += team.throwIns;
+      totals.goalKicks += team.goalKicks;
+      totals.penaltiesWon += team.penaltiesWon;
       return {
         ...team,
         goalsPerMatch: round(team.goals / team.matches),
         shotsPerMatch: round(team.shots / team.matches),
         passCompletionRate: rate(team.passesCompleted, team.passesAttempted),
         oneTouchPassesPerMatch: round(team.oneTouchPasses / team.matches),
-        offsidesPerMatch: round(team.offsides / team.matches)
+        offsidesPerMatch: round(team.offsides / team.matches),
+        tackleSuccessRate: rate(team.tacklesWon, team.tacklesAttempted),
+        foulsPerMatch: round(team.fouls / team.matches),
+        cornersPerMatch: round(team.corners / team.matches),
+        throwInsPerMatch: round(team.throwIns / team.matches)
       };
     });
 
@@ -199,6 +237,13 @@
       oneTouchPassesPerMatch: round(totals.oneTouchPasses / matches),
       combinationsPerMatch: round(totals.combinations / matches),
       offsidesPerMatch: round(totals.offsides / matches),
+      tacklesPerMatch: round(totals.tacklesAttempted / matches),
+      tackleSuccessRate: rate(totals.tacklesWon, totals.tacklesAttempted),
+      foulsPerMatch: round(totals.fouls / matches),
+      cornersPerMatch: round(totals.corners / matches),
+      throwInsPerMatch: round(totals.throwIns / matches),
+      goalKicksPerMatch: round(totals.goalKicks / matches),
+      penaltiesPerMatch: round(totals.penaltiesWon / matches),
       averageShotDistance: round(totals.shotDistance / Math.max(totals.shotEvents, 1))
     };
 
@@ -260,6 +305,22 @@
         note: summary.offsidesPerMatch > 8
           ? "movimentos em profundidade estao gerando impedimentos demais"
           : "linha de impedimento participa sem interromper excessivamente"
+      },
+      {
+        metric: "foulsPerMatch",
+        value: summary.foulsPerMatch,
+        status: summary.foulsPerMatch > 32 ? "warning" : "ok",
+        note: summary.foulsPerMatch > 32
+          ? "duelos defensivos podem estar interrompendo demais o jogo"
+          : "frequencia de faltas permanece controlada"
+      },
+      {
+        metric: "cornersPerMatch",
+        value: summary.cornersPerMatch,
+        status: summary.cornersPerMatch > 18 ? "warning" : "ok",
+        note: summary.cornersPerMatch > 18
+          ? "desvios pela linha de fundo podem estar frequentes demais"
+          : "escanteios surgem sem dominar a partida"
       }
     ];
   }

@@ -33,6 +33,31 @@ test("batch analysis can retain each match event log", () => {
   });
 });
 
+test("batch analysis reports tackles, fouls, and set-piece restarts", () => {
+  const report = simulateMatches({
+    teams: TEAMS_CONFIG,
+    matches: 3,
+    seedStart: 350
+  });
+
+  assert.ok(Number.isFinite(report.summary.tacklesPerMatch));
+  assert.ok(Number.isFinite(report.summary.foulsPerMatch));
+  assert.ok(Number.isFinite(report.summary.cornersPerMatch));
+  assert.ok(Number.isFinite(report.summary.throwInsPerMatch));
+  report.teams.forEach((team) => {
+    assert.ok(Number.isFinite(team.tacklesWon));
+    assert.ok(Number.isFinite(team.fouls));
+    assert.ok(Number.isFinite(team.corners));
+    assert.ok(Number.isFinite(team.throwIns));
+  });
+  report.players.forEach((player) => {
+    assert.ok(Number.isFinite(player.tacklesAttempted));
+    assert.ok(Number.isFinite(player.tacklesWon));
+    assert.ok(Number.isFinite(player.foulsCommitted));
+    assert.ok(Number.isFinite(player.foulsWon));
+  });
+});
+
 test("batch analysis produces deterministic team and player metrics", () => {
   const first = simulateMatches({
     teams: TEAMS_CONFIG,

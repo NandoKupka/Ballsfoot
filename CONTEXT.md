@@ -18,7 +18,15 @@ The current product surface is a live match simulator: two teams line up in a 4-
 - Lineup assignment: the allocation of players to formation slots. Players with a higher derived overall claim compatible preferred slots first; unassigned players fill the remaining slots.
 - Formation: a set of tactical slots, each defined by an on-field role and base position. The only implemented formation is `4-4-2`.
 - Possession: the current player carrying the ball. Many tactical calculations are centered on the possession holder.
-- Ball state: the ball's current lifecycle state: controlled by a player, travelling toward a target, loose after a deflection, or out of play. A travelling or loose ball has no possession holder.
+- Ball state: the ball's current lifecycle state: controlled by a player, travelling toward a target, loose after a failed control, or out of play. A travelling or loose ball has no possession holder.
+- Interception: contact with an opponent's travelling pass that immediately establishes controlled possession for the defending team, including a deflection brought under control.
+- Tackle: a defensive challenge against the current possession holder that can win control, deflect the ball, be evaded, or commit a foul.
+- Foul: an illegal defensive challenge that stops play and awards the opponent a free kick, or a penalty when committed inside the defender's own penalty area.
+- Restart: the controlled resumption of play after the ball is out or an infringement, including a throw-in, goal kick, corner, free kick, penalty, offside restart, or kickoff.
+- Throw-in: the restart awarded to the opponent of the last-touch team when the ball crosses a touchline.
+- Corner: the attacking-team restart awarded when the defending team last touches the ball before it crosses its own end line outside the goal.
+- Goal kick: the defending-team restart awarded when the attacking team last touches the ball before it crosses the defending end line outside the goal.
+- Penalty: a direct shot against the goalkeeper awarded for a defending foul inside the defender's own penalty area.
 - Simulation time: continuous elapsed time advanced through fixed internal steps. Match-clock time is derived from simulation time, while playback speed controls how quickly simulation time is consumed.
 - Tactical context: a derived snapshot for one team: phase, intent, pressure zone, ball side, line centers, mentality, and defensive line.
 - Support option: a nearby teammate positioned to give the possession holder a safe short pass and form a small triangle around the ball.
