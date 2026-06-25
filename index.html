@@ -520,75 +520,99 @@
 
     .match-stats {
       display: grid;
-      gap: 8px;
-      padding: 10px;
+      gap: 0;
+      padding: 10px 12px 12px;
       border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-      background: rgba(255, 255, 255, 0.028);
+      background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.045), rgba(255, 255, 255, 0.018));
     }
 
     .match-stats-head,
     .match-stats-row {
       display: grid;
-      grid-template-columns: minmax(58px, 1fr) repeat(6, minmax(34px, 0.62fr));
+      grid-template-columns: minmax(92px, 1.15fr) repeat(2, minmax(76px, 1fr));
       align-items: center;
-      gap: 6px;
+      gap: 10px;
       min-width: 0;
     }
 
     .match-stats-head {
+      padding: 2px 10px 9px;
       color: var(--muted);
       font-size: 10px;
       font-weight: 800;
       text-transform: uppercase;
-      letter-spacing: 0.04em;
+      letter-spacing: 0.07em;
     }
 
     .match-stats-row {
-      border: 1px solid rgba(255, 255, 255, 0.085);
-      border-left: 3px solid var(--team-color);
-      border-radius: 8px;
-      background: rgba(255, 255, 255, 0.045);
-      padding: 8px;
+      border-top: 1px solid rgba(255, 255, 255, 0.075);
+      padding: 10px;
       color: var(--text);
       font-size: 12px;
       font-variant-numeric: tabular-nums;
     }
 
     .match-stats-team {
+      position: relative;
       min-width: 0;
       overflow: hidden;
       color: var(--text);
       font-weight: 850;
       text-overflow: ellipsis;
       white-space: nowrap;
+      text-align: right;
+    }
+
+    .match-stats-team::before {
+      display: inline-block;
+      width: 7px;
+      height: 7px;
+      margin-right: 6px;
+      border-radius: 50%;
+      background: var(--team-color);
+      content: "";
+      box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.055);
+    }
+
+    .match-stats-label {
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 0.035em;
+      text-transform: uppercase;
     }
 
     .match-stats-value {
       text-align: right;
-      font-weight: 800;
+      color: var(--text);
+      font-size: 12px;
+      font-weight: 850;
     }
 
     .key-moments {
       display: flex;
       flex-direction: column;
-      gap: 8px;
-      padding: 10px;
+      gap: 9px;
+      padding: 12px;
       overflow-y: auto;
-      background: rgba(255, 255, 255, 0.025);
+      background:
+        radial-gradient(circle at top right, rgba(255, 255, 255, 0.035), transparent 42%),
+        rgba(255, 255, 255, 0.018);
       scrollbar-color: rgba(255, 255, 255, 0.26) transparent;
     }
 
     .key-moment {
       display: grid;
-      grid-template-columns: 48px 1fr;
-      gap: 9px;
+      grid-template-columns: 42px 1fr;
+      gap: 10px;
       align-items: start;
       min-width: 0;
       border: 1px solid rgba(255, 255, 255, 0.085);
       border-left: 3px solid rgba(255, 255, 255, 0.22);
-      border-radius: 8px;
-      background: rgba(255, 255, 255, 0.045);
-      padding: 8px;
+      border-radius: 10px;
+      background: rgba(255, 255, 255, 0.042);
+      padding: 10px;
       color: var(--text);
     }
 
@@ -601,22 +625,18 @@
 
     .key-moment strong {
       display: block;
-      overflow: hidden;
       color: var(--text);
-      font-size: 12px;
-      font-weight: 800;
-      text-overflow: ellipsis;
-      white-space: nowrap;
+      font-size: 13px;
+      font-weight: 850;
+      line-height: 1.2;
     }
 
     .key-moment span {
       display: block;
-      overflow: hidden;
+      margin-top: 3px;
       color: var(--muted);
-      font-size: 11px;
-      line-height: 1.25;
-      text-overflow: ellipsis;
-      white-space: nowrap;
+      font-size: 12px;
+      line-height: 1.4;
     }
 
     .timeline-copy {
@@ -905,11 +925,11 @@
 
         <div class="log-panel" aria-label="Timeline da partida">
           <div class="log-header">
-            <h3>Timeline</h3>
-            <span class="log-badge" id="log-count">0 lances</span>
+            <h3>Resumo da partida</h3>
+            <span class="log-badge" id="log-count">0 importantes</span>
           </div>
           <div class="match-stats" id="match-stats" aria-label="Estatisticas da partida"></div>
-          <div class="key-moments" id="key-moments" aria-label="Lances importantes"></div>
+          <div class="key-moments" id="key-moments" aria-label="Eventos importantes, do mais novo para o mais antigo"></div>
           <ol class="event-log" id="event-log" aria-hidden="true"></ol>
           <div class="timeline-copy">
             <div class="log-export-actions">

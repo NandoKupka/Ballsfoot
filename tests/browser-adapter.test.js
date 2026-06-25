@@ -187,3 +187,80 @@ test("hidden export logs accumulate while the visible match log resets", () => {
   assert.match(game.getLogText("text"), /Gol da primeira/);
   assert.match(game.getLogText("text"), /Passe da segunda/);
 });
+
+test("match data is rendered vertically with both teams compared per metric", () => {
+  const document = new FakeDocument();
+  const context = vm.createContext({
+    console,
+    document,
+    navigator: { clipboard: { writeText: async () => {} } },
+    performance: { now: () => 0 },
+    requestAnimationFrame: () => 1,
+    cancelAnimationFrame: () => {},
+    addEventListener: () => {},
+    clearTimeout,
+    setTimeout,
+    Blob,
+    URL: {
+      createObjectURL: () => "blob:test",
+      revokeObjectURL: () => {}
+    }
+  });
+  context.globalThis = context;
+
+  const root = path.resolve(__dirname, "..");
+  vm.runInContext(fs.readFileSync(path.join(root, "src", "config", "teams.js"), "utf8"), context);
+  vm.runInContext(fs.readFileSync(path.join(root, "src", "domain", "match-engine.js"), "utf8"), context);
+  vm.runInContext(fs.readFileSync(path.join(root, "src", "ui", "browser-game-adapter.js"), "utf8"), context);
+  document.listeners.get("DOMContentLoaded")();
+
+  const game = context.tacticsGame;
+  game.renderStats(game.engine.getSnapshot());
+  const stats = document.getElementById("match-stats");
+
+  assert.equal(stats.children[0].className, "match-stats-head");
+  assert.deepEqual(
+    Array.from(stats.children.slice(1), (row) => row.children[0].textContent),
+    ["Posse", "Passes", "Finalizacoes", "Faltas", "Escanteios"]
+  );
+  stats.children.slice(1).forEach((row) => assert.equal(row.children.length, 3));
+});
+
+test("visible event feed keeps only important events with newest first", () => {
+  const document = new FakeDocument();
+  const context = vm.createContext({
+    console,
+    document,
+    navigator: { clipboard: { writeText: async () => {} } },
+    performance: { now: () => 0 },
+    requestAnimationFrame: () => 1,
+    cancelAnimationFrame: () => {},
+    addEventListener: () => {},
+    clearTimeout,
+    setTimeout,
+    Blob,
+    URL: {
+      createObjectURL: () => "blob:test",
+      revokeObjectURL: () => {}
+    }
+  });
+  context.globalThis = context;
+
+  const root = path.resolve(__dirname, "..");
+  vm.runInContext(fs.readFileSync(path.join(root, "src", "config", "teams.js"), "utf8"), context);
+  vm.runInContext(fs.readFileSync(path.join(root, "src", "domain", "match-engine.js"), "utf8"), context);
+  vm.runInContext(fs.readFileSync(path.join(root, "src", "ui", "browser-game-adapter.js"), "utf8"), context);
+  document.listeners.get("DOMContentLoaded")();
+
+  const game = context.tacticsGame;
+  game.beginNewMatchLog();
+  game.addLog({ kind: "pass_completed", title: "Passe", detail: "Evento comum" });
+  game.addLog({ kind: "foul_committed", title: "Falta", detail: "Primeiro importante" });
+  game.addLog({ kind: "goal", title: "Gol", detail: "Mais recente" });
+
+  const visible = document.getElementById("key-moments").children;
+  assert.equal(visible.length, 2);
+  assert.equal(visible[0].children[1].children[0].textContent, "Gol");
+  assert.equal(visible[1].children[1].children[0].textContent, "Falta");
+  assert.match(document.getElementById("log-count").textContent, /2 importantes/);
+});

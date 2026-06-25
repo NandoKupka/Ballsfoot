@@ -198,10 +198,12 @@
 
     describeEvent(event, snapshot = this.engine.getSnapshot()) {
       const team = snapshot.teams.find((candidate) => candidate.id === event.data.teamId);
-      const player = team?.players.find((candidate) => candidate.id === event.data.playerId);
-      const receiver = snapshot.teams
-        .flatMap((candidate) => candidate.players)
-        .find((candidate) => candidate.id === event.data.receiverId);
+      const allPlayers = snapshot.teams.flatMap((candidate) => candidate.players);
+      const findPlayer = (playerId) => allPlayers.find((candidate) => candidate.id === playerId);
+      const player = findPlayer(event.data.playerId);
+      const receiver = findPlayer(event.data.receiverId);
+      const fouledPlayer = findPlayer(event.data.fouledPlayerId);
+      const goalkeeper = findPlayer(event.data.goalkeeperId);
       const base = {
         time: this.formatEventClock(event.matchMs),
         type: team?.id || "system",
@@ -252,7 +254,7 @@
         },
         offside: {
           title: "Impedimento",
-          detail: `${player?.name || "Jogador"} participa da jogada alem da linha do penultimo adversario.`
+          detail: `${player?.name || "Jogador"} recebe em posicao irregular e a defesa ganha a reposicao.`
         },
         pass_intercepted: {
           title: "Interceptacao",
@@ -269,8 +271,8 @@
         foul_committed: {
           title: event.data.penalty ? "Penalti" : "Falta",
           detail: event.data.penalty
-            ? `${player?.name || "Defensor"} comete a infracao dentro da area.`
-            : `${player?.name || "Defensor"} interrompe a jogada com falta.`
+            ? `${player?.name || "Defensor"} derruba ${fouledPlayer?.name || "o adversario"} dentro da area.`
+            : `${player?.name || "Defensor"} para ${fouledPlayer?.name || "o adversario"} com falta.`
         },
         throw_in_awarded: {
           title: "Lateral",
@@ -278,7 +280,7 @@
         },
         corner_awarded: {
           title: "Escanteio",
-          detail: `${team?.shortName || "O time"} ganha o escanteio.`
+          detail: `${team?.shortName || "O time"} ganha nova chance de ataque pela bola desviada na linha de fundo.`
         },
         goal_kick_awarded: {
           title: "Tiro de meta",
@@ -290,7 +292,7 @@
         },
         penalty_awarded: {
           title: "Penalti marcado",
-          detail: `${team?.shortName || "O time"} tera a cobranca.`
+          detail: `${team?.shortName || "O time"} recebe a cobranca apos falta de ${player?.name || "um defensor"} na area.`
         },
         pass_deflected: {
           title: "Passe desviado",
@@ -310,7 +312,7 @@
         },
         shot_saved: {
           title: "Defesa",
-          detail: "O goleiro controla a finalizacao."
+          detail: `${goalkeeper?.name || "O goleiro"} segura a finalizacao de ${player?.name || "um atacante"}${event.data.distance ? `, de ${Math.round(event.data.distance)} metros` : ""}.`
         },
         shot_parried: {
           title: "Defesa para escanteio",
@@ -322,11 +324,11 @@
         },
         shot_out: {
           title: "Para fora",
-          detail: "A finalizacao sai sem acertar o gol."
+          detail: `${player?.name || "Jogador"} finaliza${event.data.distance ? ` de ${Math.round(event.data.distance)} metros` : ""}, mas nao acerta o gol.`
         },
         goal: {
           title: "Gol",
-          detail: `${player?.name || "Jogador"} manda a bola para a rede.`
+          detail: `${player?.name || "Jogador"} marca para ${team?.shortName || "seu time"}. Placar: ${snapshot.teams[0].score} x ${snapshot.teams[1].score}.`
         },
         penalty_taken: {
           title: "Cobranca de penalti",
@@ -338,7 +340,7 @@
         },
         penalty_saved: {
           title: "Penalti defendido",
-          detail: "O goleiro segura a cobranca sem rebote."
+          detail: `${goalkeeper?.name || "O goleiro"} defende a cobranca de ${player?.name || "um atacante"} sem dar rebote.`
         },
         penalty_missed: {
           title: "Penalti perdido",
@@ -379,27 +381,29 @@
       this.allLogEntries.push(normalized);
       this.currentMatchEntries.push(normalized);
 
-      if ([
+      if (this.isImportantEvent(normalized.kind)) {
+        this.keyMomentEntries.push(normalized);
+      }
+
+      this.renderLogs();
+    }
+
+    isImportantEvent(kind) {
+      return [
+        "match_started",
+        "second_half_started",
+        "halftime",
+        "fulltime",
         "goal",
-        "shot_started",
         "shot_saved",
-        "shot_parried",
-        "shot_blocked",
-        "pass_intercepted",
-        "tackle_won",
+        "shot_out",
         "foul_committed",
         "corner_awarded",
         "penalty_awarded",
         "penalty_saved",
         "penalty_missed",
-        "offside",
-        "halftime",
-        "fulltime"
-      ].includes(normalized.kind)) {
-        this.keyMomentEntries.push(normalized);
-      }
-
-      this.renderLogs();
+        "offside"
+      ].includes(kind);
     }
 
     beginNewMatchLog() {
@@ -491,28 +495,52 @@
       const totalPossession = snapshot.teams.reduce((sum, team) => sum + team.stats.possessionMatchMs, 0);
       const header = this.document.createElement("div");
       header.className = "match-stats-head";
-      ["Time", "Posse", "Chutes", "Passes", "Des.", "Faltas", "BP"].forEach((label) => {
+      ["Dados", ...snapshot.teams.map((team) => team.shortName)].forEach((label, index) => {
         const cell = this.document.createElement("span");
+        if (index > 0) {
+          cell.style.setProperty("--team-color", snapshot.teams[index - 1].colors.main);
+          cell.className = "match-stats-team";
+        }
         cell.textContent = label;
         header.appendChild(cell);
       });
 
-      const rows = snapshot.teams.map((team) => {
+      const possession = snapshot.teams.map((team) =>
+        `${totalPossession ? Math.round(team.stats.possessionMatchMs / totalPossession * 100) : 50}%`
+      );
+      const metrics = [
+        {
+          label: "Posse",
+          values: possession
+        },
+        {
+          label: "Passes",
+          values: snapshot.teams.map((team) => {
+            const attempted = team.stats.passesAttempted;
+            const rate = attempted ? Math.round(team.stats.passesCompleted / attempted * 100) : 0;
+            return `${team.stats.passesCompleted}/${attempted} · ${rate}%`;
+          })
+        },
+        {
+          label: "Finalizacoes",
+          values: snapshot.teams.map((team) => `${team.stats.shots} · ${team.score} gols`)
+        },
+        {
+          label: "Faltas",
+          values: snapshot.teams.map((team) => String(team.stats.fouls))
+        },
+        {
+          label: "Escanteios",
+          values: snapshot.teams.map((team) => String(team.stats.corners))
+        }
+      ];
+
+      const rows = metrics.map((metric) => {
         const row = this.document.createElement("div");
         row.className = "match-stats-row";
-        row.style.setProperty("--team-color", team.colors.main);
-        const values = [
-          team.shortName,
-          `${totalPossession ? Math.round(team.stats.possessionMatchMs / totalPossession * 100) : 50}%`,
-          team.stats.shots,
-          team.stats.passesCompleted,
-          `${team.stats.tacklesWon}/${team.stats.tacklesAttempted}`,
-          team.stats.fouls,
-          team.stats.corners + team.stats.throwIns + team.stats.penaltiesWon
-        ];
-        values.forEach((value, index) => {
+        [metric.label, ...metric.values].forEach((value, index) => {
           const cell = this.document.createElement("span");
-          cell.className = index === 0 ? "match-stats-team" : "match-stats-value";
+          cell.className = index === 0 ? "match-stats-label" : "match-stats-value";
           cell.textContent = value;
           row.appendChild(cell);
         });
@@ -588,7 +616,7 @@
     }
 
     renderLogs() {
-      this.logCount.textContent = `${this.currentMatchEntries.length} lances | ${this.allLogEntries.length} acumulados`;
+      this.logCount.textContent = `${this.keyMomentEntries.length} importantes`;
       this.eventLog.replaceChildren(...this.allLogEntries.map((entry) => {
         const item = this.document.createElement("li");
         item.className = entry.kind;
@@ -604,15 +632,15 @@
         const detail = this.document.createElement("span");
         empty.className = "key-moment system";
         time.textContent = "--";
-        title.textContent = "Timeline";
-        detail.textContent = "Lances importantes vao aparecer aqui.";
+        title.textContent = "Eventos importantes";
+        detail.textContent = "Gols, finalizacoes, faltas e bolas paradas aparecerao aqui.";
         copy.append(title, detail);
         empty.append(time, copy);
         this.keyMoments.replaceChildren(empty);
         return;
       }
 
-      this.keyMoments.replaceChildren(...this.keyMomentEntries.slice(-24).map((entry) => {
+      this.keyMoments.replaceChildren(...this.keyMomentEntries.slice(-20).reverse().map((entry) => {
         const item = this.document.createElement("div");
         const time = this.document.createElement("time");
         const copy = this.document.createElement("div");
