@@ -66,7 +66,7 @@
     }
   ];
   const MATCH_SETTINGS = {
-    matchClockRate: 30
+    matchClockRate: 15
   };
 
   return {

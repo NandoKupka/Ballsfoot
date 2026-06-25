@@ -26,7 +26,8 @@
     const events = [];
     engine.command({ type: "start" });
 
-    for (let step = 0; step < 4_000 && engine.getSnapshot().match.state !== "finished"; step += 1) {
+    const maximumSteps = Math.ceil(8_000 * (15 / Math.max(engine.matchClockRate, 1)));
+    for (let step = 0; step < maximumSteps && engine.getSnapshot().match.state !== "finished"; step += 1) {
       engine.advance(50);
       const snapshot = engine.getSnapshot();
       events.push(...engine.drainEvents());
@@ -70,6 +71,8 @@
       throwIns: 0,
       goalKicks: 0,
       penaltiesWon: 0,
+      matchesWithoutFouls: 0,
+      matchesWithoutThrowIns: 0,
       shotDistance: 0,
       shotEvents: 0
     };
@@ -182,6 +185,12 @@
           totals.shotDistance += event.data.distance;
         }
       });
+      if (!result.events.some((event) => event.type === "foul_committed")) {
+        totals.matchesWithoutFouls += 1;
+      }
+      if (!result.events.some((event) => event.type === "throw_in_awarded")) {
+        totals.matchesWithoutThrowIns += 1;
+      }
     }
 
     const teams = [...teamAggregates.values()].map((team) => {
@@ -244,6 +253,10 @@
       throwInsPerMatch: round(totals.throwIns / matches),
       goalKicksPerMatch: round(totals.goalKicks / matches),
       penaltiesPerMatch: round(totals.penaltiesWon / matches),
+      matchesWithoutFouls: totals.matchesWithoutFouls,
+      matchesWithoutFoulsRate: rate(totals.matchesWithoutFouls, matches),
+      matchesWithoutThrowIns: totals.matchesWithoutThrowIns,
+      matchesWithoutThrowInsRate: rate(totals.matchesWithoutThrowIns, matches),
       averageShotDistance: round(totals.shotDistance / Math.max(totals.shotEvents, 1))
     };
 
@@ -273,10 +286,10 @@
       {
         metric: "shotsPerMatch",
         value: summary.shotsPerMatch,
-        status: summary.shotsPerMatch < 1 || summary.shotsPerMatch > 20 ? "warning" : "ok",
+        status: summary.shotsPerMatch < 1 || summary.shotsPerMatch > 30 ? "warning" : "ok",
         note: summary.shotsPerMatch < 1
           ? "criacao de chances pode estar baixa"
-          : (summary.shotsPerMatch > 20
+          : (summary.shotsPerMatch > 30
             ? "volume de finalizacoes pode estar alto demais"
             : "partidas produzem finalizacoes")
       },
@@ -321,6 +334,22 @@
         note: summary.cornersPerMatch > 18
           ? "desvios pela linha de fundo podem estar frequentes demais"
           : "escanteios surgem sem dominar a partida"
+      },
+      {
+        metric: "matchesWithoutFoulsRate",
+        value: summary.matchesWithoutFoulsRate,
+        status: summary.matchesWithoutFoulsRate > 10 ? "warning" : "ok",
+        note: summary.matchesWithoutFoulsRate > 10
+          ? "partidas sem faltas ainda aparecem com frequencia"
+          : "partidas sem faltas sao raras"
+      },
+      {
+        metric: "matchesWithoutThrowInsRate",
+        value: summary.matchesWithoutThrowInsRate,
+        status: summary.matchesWithoutThrowInsRate > 10 ? "warning" : "ok",
+        note: summary.matchesWithoutThrowInsRate > 10
+          ? "partidas sem laterais ainda aparecem com frequencia"
+          : "partidas sem laterais sao raras"
       }
     ];
   }

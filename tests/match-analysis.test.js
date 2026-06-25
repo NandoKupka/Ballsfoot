@@ -44,6 +44,10 @@ test("batch analysis reports tackles, fouls, and set-piece restarts", () => {
   assert.ok(Number.isFinite(report.summary.foulsPerMatch));
   assert.ok(Number.isFinite(report.summary.cornersPerMatch));
   assert.ok(Number.isFinite(report.summary.throwInsPerMatch));
+  assert.ok(Number.isInteger(report.summary.matchesWithoutFouls));
+  assert.ok(Number.isInteger(report.summary.matchesWithoutThrowIns));
+  assert.ok(Number.isFinite(report.summary.matchesWithoutFoulsRate));
+  assert.ok(Number.isFinite(report.summary.matchesWithoutThrowInsRate));
   report.teams.forEach((team) => {
     assert.ok(Number.isFinite(team.tacklesWon));
     assert.ok(Number.isFinite(team.fouls));

@@ -626,6 +626,7 @@
               playerId: receiver.id,
               passerId: passer?.id || null
             });
+            this.maybeAwardThrowInAfterBadControl(receiver);
           }
         }
         return;
@@ -660,6 +661,20 @@
           });
         }
       }
+    }
+
+    maybeAwardThrowInAfterBadControl(player, force = false) {
+      if (!player || this.ball.mode !== "loose") return false;
+      const touchlineDistance = Math.min(player.x, 100 - player.x);
+      if (touchlineDistance > 30 || (!force && this.random.next() > 0.55)) return false;
+      const lastTouchTeam = this.getTeam(player.teamId);
+      const restartTeam = lastTouchTeam ? this.getOpponent(lastTouchTeam) : this.teams[0];
+      const exitX = player.x < 50 ? 1 : 99;
+      this.scheduleRestart("throw_in", restartTeam, {
+        x: exitX,
+        y: this.clamp(player.y, 3, 97)
+      });
+      return true;
     }
 
     makeBallLoose(velocity = { x: 0, y: 0 }, lastTouchedTeamId = this.ball.lastTouchedTeamId) {
@@ -1727,13 +1742,13 @@
         carrier,
         1
       )[0];
-      if (!defender || this.distance(defender, carrier) > 3.2) return false;
+      if (!defender || this.distance(defender, carrier) > 2.8) return false;
       const foulChance = this.clamp(
-        0.04 +
-          carrier.pressure * 0.075 +
-          (1 - defender.attributes.intelligence / 100) * 0.04,
-        0.04,
-        0.16
+        0.018 +
+          carrier.pressure * 0.032 +
+          (1 - defender.attributes.intelligence / 100) * 0.02,
+        0.018,
+        0.07
       );
       if (this.random.next() > foulChance) return false;
       return this.resolveTackle(defender, carrier, "foul");
@@ -1871,14 +1886,14 @@
         ? this.clamp((maximumShotDistance - goalDistance) / maximumShotDistance, 0, 1)
         : 0;
       let shotChance = maximumShotDistance && goalDistance < maximumShotDistance
-        ? this.clamp(0.36 + shotCloseness * 0.62 + (1 - carrier.pressure) * 0.1, 0.18, 0.92)
+        ? this.clamp(0.12 + shotCloseness * 0.28 + (1 - carrier.pressure) * 0.05, 0.06, 0.46)
         : 0;
       const shootingDecision = (
         carrier.attributes.technique * 0.45 +
         carrier.attributes.intelligence * 0.55
       ) / 100;
       shotChance *= 0.65 + shootingDecision * 0.45;
-      if (goalDistance < 24 && maximumShotDistance) shotChance = Math.max(shotChance, 0.9);
+      if (goalDistance < 24 && maximumShotDistance) shotChance = Math.max(shotChance, 0.32);
       if (goalDistance > 30) shotChance *= 0.3;
 
       if (shotChance && goalDistance < 18 && this.attemptLastDitchChallenge(carrier)) {
@@ -2066,6 +2081,11 @@
           (goalkeeperQuality - 50) / 420,
         0.015,
         0.6
+      ) * 0.65;
+      const adjustedGoalChance = this.clamp(
+        goalChance,
+        0.01,
+        0.42
       );
       const roll = this.random.next();
       const saveChance = this.clamp(
@@ -2078,7 +2098,7 @@
         ? this.clamp(0.04 + blocker.attributes.defense / 520, 0.08, 0.22)
         : 0;
       const outcome = options.outcome || (
-        roll < goalChance
+        roll < adjustedGoalChance
           ? "goal"
           : (defensiveOutcomeRoll < blockChance
             ? "blocked"
@@ -2119,7 +2139,7 @@
         contactedPlayerIds: [],
         shooterId: shooter.id,
         deflectorId: outcome === "blocked" ? blocker?.id || null : goalkeeper?.id || null,
-        goalChance,
+        goalChance: adjustedGoalChance,
         oneTouch: false,
         oneTouchChain: 0,
         combination: false,
@@ -2131,7 +2151,7 @@
         teamId: team.id,
         playerId: shooter.id,
         distance,
-        goalChance
+        goalChance: adjustedGoalChance
       });
     }
 

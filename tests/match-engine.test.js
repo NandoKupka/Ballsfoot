@@ -255,6 +255,26 @@ test("a deflected tackle beside the touchline can immediately produce a throw-in
   assert.equal(engine.ball.restartTeamId, attackingTeam.id);
 });
 
+test("a failed wide control can carry the ball through the touchline", () => {
+  const engine = new MatchEngine({
+    teams: createTeams(),
+    seed: 22,
+    matchClockRate: 1,
+    autonomous: false
+  });
+  const receiver = engine.teams[0].players.find((player) => player.role === "ME");
+  receiver.x = 18;
+  receiver.y = 52;
+  engine.makeBallLoose({ x: -6, y: 0 }, receiver.teamId);
+
+  const awarded = engine.maybeAwardThrowInAfterBadControl(receiver, true);
+
+  assert.equal(awarded, true);
+  assert.equal(engine.ball.mode, "out");
+  assert.equal(engine.ball.restartReason, "throw_in");
+  assert.equal(engine.ball.restartTeamId, engine.teams[1].id);
+});
+
 test("a foul outside the penalty area awards a free kick at the infringement point", () => {
   const engine = new MatchEngine({
     teams: createTeams(),

@@ -130,7 +130,7 @@ test("the browser adapter initializes the engine and mounts every player", () =>
 
   assert.ok(context.tacticsGame);
   assert.equal(context.tacticsGame.engine.getSnapshot().teams.length, 2);
-  assert.equal(context.tacticsGame.engine.matchClockRate, 30);
+  assert.equal(context.tacticsGame.engine.matchClockRate, 15);
   assert.equal(context.tacticsGame.playerElements.size, 22);
   assert.equal(document.getElementById("clock").textContent, "00'");
   assert.equal(document.getElementById("score").textContent, "0 x 0");
