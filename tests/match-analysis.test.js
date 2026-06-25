@@ -16,6 +16,23 @@ test("team config stores exactly four attributes and no fixed overall", () => {
   });
 });
 
+test("batch analysis can retain each match event log", () => {
+  const report = simulateMatches({
+    teams: TEAMS_CONFIG,
+    matches: 2,
+    seedStart: 300,
+    includeMatchLogs: true
+  });
+
+  assert.equal(report.matchLogs.length, 2);
+  assert.deepEqual(report.matchLogs.map((match) => match.seed), [300, 301]);
+  report.matchLogs.forEach((match) => {
+    assert.equal(match.score.length, 2);
+    assert.ok(match.events.length > 0);
+    assert.equal(match.events.at(-1).type, "fulltime");
+  });
+});
+
 test("batch analysis produces deterministic team and player metrics", () => {
   const first = simulateMatches({
     teams: TEAMS_CONFIG,

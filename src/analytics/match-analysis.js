@@ -52,6 +52,7 @@
     const seedStart = Number(options.seedStart) || 1;
     const teamAggregates = new Map();
     const playerAggregates = new Map();
+    const matchLogs = [];
     const totals = {
       goals: 0,
       shots: 0,
@@ -72,6 +73,19 @@
         seed: seedStart + matchIndex,
         matchClockRate: options.matchClockRate
       });
+
+      if (options.includeMatchLogs) {
+        matchLogs.push({
+          matchNumber: matchIndex + 1,
+          seed: seedStart + matchIndex,
+          score: result.snapshot.teams.map((team) => ({
+            teamId: team.id,
+            name: team.name,
+            goals: team.score
+          })),
+          events: result.events
+        });
+      }
 
       result.snapshot.teams.forEach((team) => {
         const aggregate = teamAggregates.get(team.id) || {
@@ -192,7 +206,8 @@
       summary,
       signals: createSignals(summary),
       teams,
-      players
+      players,
+      ...(options.includeMatchLogs ? { matchLogs } : {})
     };
   }
 
