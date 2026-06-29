@@ -883,8 +883,8 @@ test("goalkeepers stay in the goal area except during build-up", () => {
   ownCarrier.y = 50;
   engine.setBallController(ownCarrier);
   engine.updateTacticalTargets();
-  assert.ok(goalkeeper.targetY >= 91);
-  assert.ok(goalkeeper.targetX >= 36.5 && goalkeeper.targetX <= 63.5);
+  assert.ok(goalkeeper.targetY >= 96);
+  assert.ok(goalkeeper.targetX >= 38 && goalkeeper.targetX <= 62);
 
   attacker.x = 50;
   attacker.y = 72;
@@ -898,8 +898,69 @@ test("goalkeepers stay in the goal area except during build-up", () => {
   engine.updateTacticalTargets();
 
   assert.equal(engine.isGoalkeeperOneOnOne(team, attacker), true);
-  assert.ok(goalkeeper.targetY >= 91);
-  assert.ok(goalkeeper.targetX >= 36.5 && goalkeeper.targetX <= 63.5);
+  assert.ok(goalkeeper.targetY >= 96);
+  assert.ok(goalkeeper.targetX >= 38 && goalkeeper.targetX <= 62);
+
+  const topTeam = engine.teams[1];
+  const topGoalkeeper = topTeam.players.find((player) => player.role === "GOL");
+  const topCarrier = topTeam.players.find((player) => player.role === "ZAG");
+  const topAttacker = engine.teams[0].players.find((player) => player.role === "ATA");
+
+  topCarrier.x = 50;
+  topCarrier.y = 12;
+  engine.setBallController(topCarrier);
+  engine.updateTacticalTargets();
+  assert.ok(topGoalkeeper.targetY >= 14.8);
+  assert.ok(topGoalkeeper.targetY <= 15.5);
+  assert.ok(topGoalkeeper.targetX >= 25.5 && topGoalkeeper.targetX <= 74.5);
+
+  topCarrier.y = 50;
+  engine.setBallController(topCarrier);
+  engine.updateTacticalTargets();
+  assert.ok(topGoalkeeper.targetY <= 4);
+  assert.ok(topGoalkeeper.targetX >= 38 && topGoalkeeper.targetX <= 62);
+
+  topAttacker.x = 50;
+  topAttacker.y = 28;
+  engine.setBallController(topAttacker);
+  engine.updateTacticalTargets();
+  assert.equal(engine.isGoalkeeperOneOnOne(topTeam, topAttacker), true);
+  assert.ok(topGoalkeeper.targetY <= 4);
+  assert.ok(topGoalkeeper.targetX >= 38 && topGoalkeeper.targetX <= 62);
+});
+
+test("goalkeepers return from build-up without jumping back to goal", () => {
+  const engine = new MatchEngine({
+    teams: createTeams(),
+    seed: 58,
+    autonomous: false
+  });
+  const team = engine.teams[0];
+  const goalkeeper = team.players.find((player) => player.role === "GOL");
+  const buildUpCarrier = team.players.find((player) => player.role === "ZAG");
+  const opponentCarrier = engine.teams[1].players.find((player) => player.role === "ATA");
+
+  buildUpCarrier.x = 50;
+  buildUpCarrier.y = 88;
+  engine.setBallController(buildUpCarrier);
+  engine.updateTacticalTargets();
+  for (let step = 0; step < 30; step += 1) {
+    engine.movePlayers(50);
+  }
+
+  assert.ok(goalkeeper.y < 96);
+  const advancedY = goalkeeper.y;
+
+  opponentCarrier.x = 50;
+  opponentCarrier.y = 70;
+  engine.setBallController(opponentCarrier);
+  engine.updateTacticalTargets();
+  engine.movePlayers(50);
+
+  assert.ok(
+    goalkeeper.y <= advancedY + 0.6,
+    `goalkeeper jumped from ${advancedY} to ${goalkeeper.y}`
+  );
 });
 
 test("backward pass weight rises when the passer is under pressure", () => {

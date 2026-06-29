@@ -15,7 +15,7 @@
     id: "4-4-2",
     name: "4-4-2",
     slots: [
-      { id: "gk", role: "GOL", x: 50, y: 91 },
+      { id: "gk", role: "GOL", x: 50, y: 97 },
       { id: "lb", role: "LE", x: 18, y: 73 },
       { id: "lcb", role: "ZAG", x: 39, y: 79 },
       { id: "rcb", role: "ZAG", x: 61, y: 79 },
@@ -33,10 +33,10 @@
     GOL: {
       groups: ["goalkeeper", "defensive"],
       attackPush: 0,
-      defensiveLine: { offset: 0, min: 3, max: 9 },
+      defensiveLine: { offset: 0, min: 3, max: 4 },
       speed: 3.6,
       carryDistance: 0,
-      zone: { x: [36.5, 63.5], progress: [3, 9] }
+      zone: { x: [38, 62], progress: [3, 4] }
     },
     ZAG: {
       groups: ["centerBack", "defensive"],

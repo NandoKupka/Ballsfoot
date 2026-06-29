@@ -33,15 +33,15 @@
     depth: 15.5
   };
   const GOAL_AREA = {
-    xMin: 36.5,
-    xMax: 63.5,
-    depth: 9
+    xMin: 38,
+    xMax: 62,
+    depth: 4
   };
   const FALLBACK_FORMATION_442 = {
     id: "4-4-2",
     name: "4-4-2",
     slots: [
-      { id: "gk", role: "GOL", x: 50, y: 91 },
+      { id: "gk", role: "GOL", x: 50, y: 97 },
       { id: "lb", role: "LE", x: 18, y: 73 },
       { id: "lcb", role: "ZAG", x: 39, y: 79 },
       { id: "rcb", role: "ZAG", x: 61, y: 79 },
@@ -55,7 +55,7 @@
     ]
   };
   const FALLBACK_ROLE_BEHAVIORS = {
-    GOL: { groups: ["goalkeeper", "defensive"], attackPush: 0, defensiveLine: { offset: 0, min: 3, max: 9 }, speed: 3.6, carryDistance: 0, zone: { x: [36.5, 63.5], progress: [3, 9] } },
+    GOL: { groups: ["goalkeeper", "defensive"], attackPush: 0, defensiveLine: { offset: 0, min: 3, max: 4 }, speed: 3.6, carryDistance: 0, zone: { x: [38, 62], progress: [3, 4] } },
     ZAG: { groups: ["centerBack", "defensive"], attackPush: 4, defensiveLine: { offset: 0, min: 15, max: 62 }, speed: 6.4, carryDistance: 2.2, zone: { xOffset: [-13, 13], progress: [12, 53] } },
     LE: { groups: ["fullback", "wide", "defensive"], attackPush: 22, defensiveLine: { offset: 0, min: 15, max: 62 }, speed: 9, carryDistance: 6.5, zone: { xBySide: { negative: [5, 42], positive: [58, 95] }, progressFromBall: { sameSideOffset: -6, farSideOffset: -14, min: 18, max: 62 }, progressMax: 88 } },
     LD: { groups: ["fullback", "wide", "defensive"], attackPush: 22, defensiveLine: { offset: 0, min: 15, max: 62 }, speed: 9, carryDistance: 6.5, zone: { xBySide: { negative: [5, 42], positive: [58, 95] }, progressFromBall: { sameSideOffset: -6, farSideOffset: -14, min: 18, max: 62 }, progressMax: 88 } },
@@ -1112,8 +1112,10 @@
 
       const ballProgress = this.getAttackProgress(this.ball, team);
       const inBuildUp = inPossession && ballProgress <= 42;
+      const buildUpLimitY = team.attacksDown ? PENALTY_AREA.depth : 100 - PENALTY_AREA.depth;
+      const buildUpMaxAdvance = Math.abs(goalkeeper.baseY - buildUpLimitY);
       const buildUpAdvance = inBuildUp
-        ? this.clamp(0.8 + (42 - ballProgress) * 0.19, 0.8, PENALTY_AREA.depth - GOAL_AREA.depth)
+        ? this.clamp(6 + (42 - ballProgress) * 0.24, 0.8, buildUpMaxAdvance)
         : 0.35;
       const horizontalFollow = inBuildUp ? 0.16 : 0.05;
       const area = inBuildUp ? PENALTY_AREA : GOAL_AREA;
@@ -1574,8 +1576,7 @@
           player.x = this.clamp(player.x, 4, 96);
           player.y = this.clamp(player.y, 3, 97);
           if (player.role === "GOL") {
-            const goalkeeperArea = this.isGoalkeeperBuildUpActive(team) ? PENALTY_AREA : GOAL_AREA;
-            const goalkeeperPosition = this.clampGoalkeeperToArea(team, player, goalkeeperArea);
+            const goalkeeperPosition = this.clampGoalkeeperToPenaltyArea(team, player);
             player.x = goalkeeperPosition.x;
             player.y = goalkeeperPosition.y;
           }
