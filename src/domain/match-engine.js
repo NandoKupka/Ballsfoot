@@ -1,5 +1,11 @@
 (function exposeBallsfootMatchEngine(root, factory) {
-  const exports = factory();
+  const systems = typeof module !== "undefined" && module.exports
+    ? require("./systems/match-systems.js")
+    : root.BallsfootSystems;
+  const formations = typeof module !== "undefined" && module.exports
+    ? require("./formations/formation-442.js")
+    : root.BallsfootFormations;
+  const exports = factory(systems, formations);
 
   if (typeof module !== "undefined" && module.exports) {
     module.exports = exports;
@@ -8,9 +14,16 @@
   if (root) {
     root.BallsfootSimulation = exports;
   }
-})(typeof globalThis !== "undefined" ? globalThis : this, function createMatchEngineModule() {
+})(typeof globalThis !== "undefined" ? globalThis : this, function createMatchEngineModule(systems, formations) {
   "use strict";
 
+  const { createDefaultMatchPipeline } = systems || {};
+  const {
+    FORMATION_442: DATA_FORMATION_442,
+    getFormation: getConfiguredFormation,
+    getRoleBehavior: getConfiguredRoleBehavior,
+    roleHasGroup: configuredRoleHasGroup
+  } = formations || {};
   const DEFAULT_FIXED_STEP_MS = 50;
   const DEFAULT_MATCH_CLOCK_RATE = 120;
   const HALF_DURATION_MS = 45 * 60 * 1000;
@@ -19,20 +32,118 @@
     xMax: 74.5,
     depth: 15.5
   };
-  const FORMATION_442 = [
-    { role: "GOL", x: 50, y: 91 },
-    { role: "LE", x: 18, y: 73 },
-    { role: "ZAG", x: 39, y: 79 },
-    { role: "ZAG", x: 61, y: 79 },
-    { role: "LD", x: 82, y: 73 },
-    { role: "ME", x: 18, y: 48 },
-    { role: "VOL", x: 40, y: 60 },
-    { role: "MC", x: 60, y: 60 },
-    { role: "MD", x: 82, y: 48 },
-    { role: "ATA", x: 42, y: 41 },
-    { role: "ATA", x: 58, y: 41 }
-  ];
+  const GOAL_AREA = {
+    xMin: 36.5,
+    xMax: 63.5,
+    depth: 9
+  };
+  const FALLBACK_FORMATION_442 = {
+    id: "4-4-2",
+    name: "4-4-2",
+    slots: [
+      { id: "gk", role: "GOL", x: 50, y: 91 },
+      { id: "lb", role: "LE", x: 18, y: 73 },
+      { id: "lcb", role: "ZAG", x: 39, y: 79 },
+      { id: "rcb", role: "ZAG", x: 61, y: 79 },
+      { id: "rb", role: "LD", x: 82, y: 73 },
+      { id: "lm", role: "ME", x: 18, y: 48 },
+      { id: "dm", role: "VOL", x: 40, y: 60 },
+      { id: "cm", role: "MC", x: 60, y: 60 },
+      { id: "rm", role: "MD", x: 82, y: 48 },
+      { id: "lf", role: "ATA", x: 42, y: 41 },
+      { id: "rf", role: "ATA", x: 58, y: 41 }
+    ]
+  };
+  const FALLBACK_ROLE_BEHAVIORS = {
+    GOL: { groups: ["goalkeeper", "defensive"], attackPush: 0, defensiveLine: { offset: 0, min: 3, max: 9 }, speed: 3.6, carryDistance: 0, zone: { x: [36.5, 63.5], progress: [3, 9] } },
+    ZAG: { groups: ["centerBack", "defensive"], attackPush: 4, defensiveLine: { offset: 0, min: 15, max: 62 }, speed: 6.4, carryDistance: 2.2, zone: { xOffset: [-13, 13], progress: [12, 53] } },
+    LE: { groups: ["fullback", "wide", "defensive"], attackPush: 22, defensiveLine: { offset: 0, min: 15, max: 62 }, speed: 9, carryDistance: 6.5, zone: { xBySide: { negative: [5, 42], positive: [58, 95] }, progressFromBall: { sameSideOffset: -6, farSideOffset: -14, min: 18, max: 62 }, progressMax: 88 } },
+    LD: { groups: ["fullback", "wide", "defensive"], attackPush: 22, defensiveLine: { offset: 0, min: 15, max: 62 }, speed: 9, carryDistance: 6.5, zone: { xBySide: { negative: [5, 42], positive: [58, 95] }, progressFromBall: { sameSideOffset: -6, farSideOffset: -14, min: 18, max: 62 }, progressMax: 88 } },
+    VOL: { groups: ["centralMidfielder", "defensive"], attackPush: 7, defensiveLine: { offset: 16, min: 28, max: 75 }, speed: 7.4, carryDistance: 3.5, zone: { x: [28, 72], progress: [22, 68] } },
+    MC: { groups: ["centralMidfielder"], attackPush: 13, defensiveLine: { offset: 16, min: 28, max: 75 }, speed: 7.4, carryDistance: 5.2, zone: { x: [24, 76], progress: [32, 82] } },
+    ME: { groups: ["wideMidfielder", "wide"], attackPush: 28, defensiveLine: { offset: 16, min: 28, max: 75 }, speed: 9, carryDistance: 6.5, zone: { xBySide: { negative: [5, 46], positive: [54, 95] }, progressFromBall: { sameSideOffset: 12, farSideOffset: 7, min: 44, max: 80 }, progressMax: 96 } },
+    MD: { groups: ["wideMidfielder", "wide"], attackPush: 28, defensiveLine: { offset: 16, min: 28, max: 75 }, speed: 9, carryDistance: 6.5, zone: { xBySide: { negative: [5, 46], positive: [54, 95] }, progressFromBall: { sameSideOffset: 12, farSideOffset: 7, min: 44, max: 80 }, progressMax: 96 } },
+    ALA: { groups: ["wingback", "wide"], attackPush: 30, defensiveLine: { offset: 16, min: 28, max: 75 }, speed: 9, carryDistance: 6.5, zone: { xBySide: { negative: [4, 48], positive: [52, 96] }, progressFromBall: { sameSideOffset: 16, farSideOffset: 10, min: 42, max: 84 }, progressMax: 95 } },
+    ATA: { groups: ["forward"], attackPush: 13, defensiveLine: { offset: 31, min: 43, max: 88 }, speed: 8.6, carryDistance: 6.2, zone: { x: [18, 82], progressFromBall: { sameSideOffset: -8, farSideOffset: -8, min: 46, max: 76 }, progressMax: 94 } },
+    CA: { groups: ["forward"], attackPush: 13, defensiveLine: { offset: 31, min: 43, max: 88 }, speed: 8.6, carryDistance: 6.2, zone: { x: [18, 82], progressFromBall: { sameSideOffset: -8, farSideOffset: -8, min: 46, max: 76 }, progressMax: 94 } },
+    PE: { groups: ["wideForward", "wide", "forward"], attackPush: 18, defensiveLine: { offset: 31, min: 43, max: 88 }, speed: 8.6, carryDistance: 6.2, zone: { xBySide: { negative: [8, 50], positive: [50, 92] }, progress: [46, 94] } },
+    PD: { groups: ["wideForward", "wide", "forward"], attackPush: 18, defensiveLine: { offset: 31, min: 43, max: 88 }, speed: 8.6, carryDistance: 6.2, zone: { xBySide: { negative: [8, 50], positive: [50, 92] }, progress: [46, 94] } },
+    RES: { groups: [], attackPush: 0, defensiveLine: { offset: 0, min: 8, max: 8 }, speed: 7.4, carryDistance: 5.2, zone: { xOffset: [-15, 15], progress: [22, 78] } }
+  };
   const ATTRIBUTE_NAMES = ["physical", "technique", "intelligence", "defense"];
+
+  function getFormation(id) {
+    if (typeof getConfiguredFormation === "function") return getConfiguredFormation(id);
+    return DATA_FORMATION_442 || FALLBACK_FORMATION_442;
+  }
+
+  function getRoleBehavior(role) {
+    if (typeof getConfiguredRoleBehavior === "function") return getConfiguredRoleBehavior(role);
+    return FALLBACK_ROLE_BEHAVIORS[String(role || "RES").toUpperCase()] || FALLBACK_ROLE_BEHAVIORS.RES;
+  }
+
+  function roleHasGroup(role, group) {
+    if (typeof configuredRoleHasGroup === "function") return configuredRoleHasGroup(role, group);
+    return getRoleBehavior(role).groups.includes(group);
+  }
+
+  function createInlineMatchPipeline() {
+    return {
+      run(world, stepMs) {
+        world.simulationElapsedMs += stepMs;
+        world.tacticalAccumulatorMs += stepMs;
+
+        if (world.tacticalAccumulatorMs >= 250) {
+          world.updateTacticalTargets();
+          world.tacticalAccumulatorMs %= 250;
+        }
+
+        world.movePlayers(stepMs);
+        world.updatePressure();
+        if (world.autonomous && world.ball.mode === "controlled") {
+          world.attemptDefensiveTackle();
+        }
+        world.updateBall(stepMs);
+
+        if (world.possession) {
+          const possessionTeam = world.getTeam(world.possession.teamId);
+          if (possessionTeam) {
+            possessionTeam.stats.possessionMatchMs += stepMs * world.matchClockRate;
+          }
+        }
+
+        if (world.ball.mode === "loose") {
+          world.updateLooseBall(stepMs);
+        }
+
+        if (world.ball.mode === "out" && world.restartRemainingMs > 0) {
+          world.restartRemainingMs -= stepMs;
+          if (world.restartRemainingMs <= 0) world.restartFromOut();
+        }
+
+        if (world.autonomous && world.ball.mode === "controlled") {
+          world.decisionRemainingMs -= stepMs;
+          if (world.decisionRemainingMs <= 0) {
+            world.decideAction();
+          }
+        }
+
+        const matchDeltaMs = stepMs * world.matchClockRate;
+        world.periodElapsedMatchMs += matchDeltaMs;
+        world.elapsedMatchMs = (world.period - 1) * HALF_DURATION_MS + world.periodElapsedMatchMs;
+
+        const stoppageMs = world.period === 1 ? world.stoppageMs.first : world.stoppageMs.second;
+        if (world.periodElapsedMatchMs < HALF_DURATION_MS + stoppageMs) return;
+
+        world.periodElapsedMatchMs = HALF_DURATION_MS + stoppageMs;
+        world.elapsedMatchMs = world.period === 1
+          ? world.periodElapsedMatchMs
+          : HALF_DURATION_MS + world.periodElapsedMatchMs;
+        world.state = world.period === 1 ? "halftime" : "finished";
+        world.emit(world.period === 1 ? "halftime" : "fulltime");
+      }
+    };
+  }
 
   class SeededRandom {
     constructor(seed = Date.now()) {
@@ -60,6 +171,7 @@
       this.fixedStepMs = options.fixedStepMs || DEFAULT_FIXED_STEP_MS;
       this.matchClockRate = options.matchClockRate || DEFAULT_MATCH_CLOCK_RATE;
       this.accumulatorMs = 0;
+      this.stepPipeline = (createDefaultMatchPipeline || createInlineMatchPipeline)();
       this.simulationElapsedMs = 0;
       this.tacticalAccumulatorMs = 0;
       this.decisionRemainingMs = 650;
@@ -122,6 +234,7 @@
         shortName: config.shortName || config.name,
         venue: config.venue || (index === 0 ? "home" : "away"),
         colors: { ...(config.colors || {}) },
+        formationId: config.formation || config.formationId || "4-4-2",
         score: 0,
         stats: {
           possessionMatchMs: 0,
@@ -191,7 +304,8 @@
     }
 
     applyFormation(team) {
-      const slots = FORMATION_442.map((slot, slotIndex) => ({
+      const formation = getFormation(team.formationId);
+      const slots = formation.slots.map((slot, slotIndex) => ({
         ...slot,
         y: team.attacksDown ? 100 - slot.y : slot.y,
         slotIndex
@@ -214,6 +328,8 @@
         if (!slot) return;
         Object.assign(player, {
           role: slot.role,
+          slotId: slot.id || `${slot.role}-${slot.slotIndex}`,
+          formationId: formation.id,
           baseX: slot.x,
           baseY: slot.y,
           x: slot.x,
@@ -352,57 +468,7 @@
     }
 
     step(stepMs) {
-      this.simulationElapsedMs += stepMs;
-      this.tacticalAccumulatorMs += stepMs;
-
-      if (this.tacticalAccumulatorMs >= 250) {
-        this.updateTacticalTargets();
-        this.tacticalAccumulatorMs %= 250;
-      }
-
-      this.movePlayers(stepMs);
-      this.updatePressure();
-      if (this.autonomous && this.ball.mode === "controlled") {
-        this.attemptDefensiveTackle();
-      }
-      this.updateBall(stepMs);
-
-      if (this.possession) {
-        const possessionTeam = this.getTeam(this.possession.teamId);
-        if (possessionTeam) {
-          possessionTeam.stats.possessionMatchMs += stepMs * this.matchClockRate;
-        }
-      }
-
-      if (this.ball.mode === "loose") {
-        this.updateLooseBall(stepMs);
-      }
-
-      if (this.ball.mode === "out" && this.restartRemainingMs > 0) {
-        this.restartRemainingMs -= stepMs;
-        if (this.restartRemainingMs <= 0) this.restartFromOut();
-      }
-
-      if (this.autonomous && this.ball.mode === "controlled") {
-        this.decisionRemainingMs -= stepMs;
-        if (this.decisionRemainingMs <= 0) {
-          this.decideAction();
-        }
-      }
-
-      const matchDeltaMs = stepMs * this.matchClockRate;
-      this.periodElapsedMatchMs += matchDeltaMs;
-      this.elapsedMatchMs = (this.period - 1) * HALF_DURATION_MS + this.periodElapsedMatchMs;
-
-      const stoppageMs = this.period === 1 ? this.stoppageMs.first : this.stoppageMs.second;
-      if (this.periodElapsedMatchMs >= HALF_DURATION_MS + stoppageMs) {
-        this.periodElapsedMatchMs = HALF_DURATION_MS + stoppageMs;
-        this.elapsedMatchMs = this.period === 1
-          ? this.periodElapsedMatchMs
-          : HALF_DURATION_MS + this.periodElapsedMatchMs;
-        this.state = this.period === 1 ? "halftime" : "finished";
-        this.emit(this.period === 1 ? "halftime" : "fulltime");
-      }
+      this.stepPipeline.run(this, stepMs);
     }
 
     reset() {
@@ -828,7 +894,15 @@
     }
 
     isForward(player) {
-      return ["ATA", "CA", "PE", "PD"].includes(player.role);
+      return this.roleHasGroup(player.role, "forward");
+    }
+
+    getRoleBehavior(role) {
+      return getRoleBehavior(role);
+    }
+
+    roleHasGroup(role, group) {
+      return roleHasGroup(role, group);
     }
 
     distance(a, b) {
@@ -1036,25 +1110,17 @@
       const direction = team.attacksDown ? 1 : -1;
       const ownGoal = this.getOwnGoalPoint(team);
 
-      if (!inPossession && this.isGoalkeeperOneOnOne(team, carrier)) {
-        const carrierDistance = this.distance(carrier, ownGoal);
-        const closingDistance = this.clamp(carrierDistance * 0.58, 6.5, PENALTY_AREA.depth - 0.5);
-        const towardCarrier = this.normalized(ownGoal, carrier);
-        return this.clampGoalkeeperToPenaltyArea(team, {
-          x: ownGoal.x + towardCarrier.x * closingDistance,
-          y: ownGoal.y + towardCarrier.y * closingDistance
-        });
-      }
-
       const ballProgress = this.getAttackProgress(this.ball, team);
-      const buildUpAdvance = inPossession
-        ? this.clamp(0.5 + ballProgress * 0.018, 0.5, 2.2)
+      const inBuildUp = inPossession && ballProgress <= 42;
+      const buildUpAdvance = inBuildUp
+        ? this.clamp(0.8 + (42 - ballProgress) * 0.19, 0.8, PENALTY_AREA.depth - GOAL_AREA.depth)
         : 0.35;
-      const horizontalFollow = inPossession ? 0.045 : 0.06;
-      return this.clampGoalkeeperToPenaltyArea(team, {
-        x: this.clamp(50 + (this.ball.x - 50) * horizontalFollow, 47.5, 52.5),
+      const horizontalFollow = inBuildUp ? 0.16 : 0.05;
+      const area = inBuildUp ? PENALTY_AREA : GOAL_AREA;
+      return this.clampGoalkeeperToArea(team, {
+        x: this.clamp(50 + (this.ball.x - 50) * horizontalFollow, area.xMin, area.xMax),
         y: goalkeeper.baseY + direction * buildUpAdvance
-      });
+      }, area);
     }
 
     isGoalkeeperOneOnOne(team, carrier) {
@@ -1076,10 +1142,26 @@
     }
 
     clampGoalkeeperToPenaltyArea(team, point) {
-      const yMin = team.attacksDown ? 3 : 100 - PENALTY_AREA.depth;
-      const yMax = team.attacksDown ? PENALTY_AREA.depth : 97;
+      return this.clampGoalkeeperToArea(team, point, PENALTY_AREA);
+    }
+
+    clampGoalkeeperToGoalArea(team, point) {
+      return this.clampGoalkeeperToArea(team, point, GOAL_AREA);
+    }
+
+    isGoalkeeperBuildUpActive(team) {
+      const passReceiver = this.ball.mode === "travelling" && this.ball.action === "pass"
+        ? this.findPlayer(this.ball.intendedReceiverId)
+        : null;
+      const inPossession = this.possession?.teamId === team.id || passReceiver?.teamId === team.id;
+      return Boolean(inPossession && this.getAttackProgress(this.ball, team) <= 42);
+    }
+
+    clampGoalkeeperToArea(team, point, area) {
+      const yMin = team.attacksDown ? 3 : 100 - area.depth;
+      const yMax = team.attacksDown ? area.depth : 97;
       return {
-        x: this.clamp(point.x, PENALTY_AREA.xMin, PENALTY_AREA.xMax),
+        x: this.clamp(point.x, area.xMin, area.xMax),
         y: this.clamp(point.y, yMin, yMax)
       };
     }
@@ -1342,63 +1424,28 @@
 
     clampToRoleZone(player, team, point, ballProgress = this.getAttackProgress(this.ball, team)) {
       const side = player.baseX < 50 ? -1 : 1;
-      let xMin = player.baseX - 15;
-      let xMax = player.baseX + 15;
-      let progressMin = 22;
-      let progressMax = 78;
+      const zone = this.getRoleBehavior(player.role).zone || {};
+      const xRange = zone.x ||
+        (zone.xBySide ? zone.xBySide[side < 0 ? "negative" : "positive"] : null) ||
+        (zone.xOffset ? [player.baseX + zone.xOffset[0], player.baseX + zone.xOffset[1]] : null) ||
+        [player.baseX - 15, player.baseX + 15];
+      let progressMin = zone.progress?.[0] ?? 22;
+      let progressMax = zone.progressMax ?? zone.progress?.[1] ?? 78;
 
-      if (player.role === "ZAG") {
-        xMin = player.baseX - 13;
-        xMax = player.baseX + 13;
-        progressMin = 12;
-        progressMax = 53;
-      } else if (["LE", "LD"].includes(player.role)) {
-        xMin = side < 0 ? 5 : 58;
-        xMax = side < 0 ? 42 : 95;
+      if (zone.progressFromBall) {
+        const ballOffset = this.isBallSide(player)
+          ? zone.progressFromBall.sameSideOffset
+          : zone.progressFromBall.farSideOffset;
         progressMin = this.clamp(
-          ballProgress - (this.isBallSide(player) ? 6 : 14),
-          18,
-          62
+          ballProgress + ballOffset,
+          zone.progressFromBall.min,
+          zone.progressFromBall.max
         );
-        progressMax = 88;
-      } else if (player.role === "VOL") {
-        xMin = 28;
-        xMax = 72;
-        progressMin = 22;
-        progressMax = 68;
-      } else if (player.role === "MC") {
-        xMin = 24;
-        xMax = 76;
-        progressMin = 32;
-        progressMax = 82;
-      } else if (["ME", "MD"].includes(player.role)) {
-        xMin = side < 0 ? 5 : 54;
-        xMax = side < 0 ? 46 : 95;
-        progressMin = this.clamp(
-          ballProgress + (this.isBallSide(player) ? 12 : 7),
-          44,
-          80
-        );
-        progressMax = 96;
-      } else if (player.role === "ALA") {
-        xMin = side < 0 ? 4 : 52;
-        xMax = side < 0 ? 48 : 96;
-        progressMin = this.clamp(
-          ballProgress + (this.isBallSide(player) ? 16 : 10),
-          42,
-          84
-        );
-        progressMax = 95;
-      } else if (this.isForward(player)) {
-        xMin = 18;
-        xMax = 82;
-        progressMin = this.clamp(ballProgress - 8, 46, 76);
-        progressMax = 94;
       }
 
       const progress = this.clamp(this.getAttackProgress(point, team), progressMin, progressMax);
       return {
-        x: this.clamp(point.x, xMin, xMax),
+        x: this.clamp(point.x, xRange[0], xRange[1]),
         y: team.attacksDown ? progress : 100 - progress
       };
     }
@@ -1527,7 +1574,8 @@
           player.x = this.clamp(player.x, 4, 96);
           player.y = this.clamp(player.y, 3, 97);
           if (player.role === "GOL") {
-            const goalkeeperPosition = this.clampGoalkeeperToPenaltyArea(team, player);
+            const goalkeeperArea = this.isGoalkeeperBuildUpActive(team) ? PENALTY_AREA : GOAL_AREA;
+            const goalkeeperPosition = this.clampGoalkeeperToArea(team, player, goalkeeperArea);
             player.x = goalkeeperPosition.x;
             player.y = goalkeeperPosition.y;
           }
@@ -1966,6 +2014,9 @@
             ? 0.72
             : (distance < 20 ? 1.35 : (distance < 28 ? 1.08 : (distance < 36 ? 0.48 : 0.18)));
           const progressBias = progress < -10 ? 0.38 : (progress < 4 ? 0.94 : (progress < 18 ? 1.3 : 1.38));
+          const backwardReleaseBias = progress < -4
+            ? this.clamp(0.18 + passer.pressure * 1.25, 0.18, 1.18)
+            : 1;
           const pressureBias = Math.max(0.22, 1 - player.pressure * 0.72);
           let roleBias = this.isForward(player) ? 1.2 : (player.role === "MC" || player.role === "VOL" ? 1.16 : 1);
           if (passerProgress > 42 && this.isForward(player)) roleBias *= 1.48;
@@ -2031,6 +2082,7 @@
               0.003,
               distanceFit *
               progressBias *
+              backwardReleaseBias *
               laneSafety *
               pressureBias *
               roleBias *
@@ -2562,38 +2614,21 @@
     }
 
     getRoleAttackPush(role) {
-      if (role === "ZAG") return 4;
-      if (role === "LE" || role === "LD") return 22;
-      if (role === "VOL") return 7;
-      if (role === "MC") return 13;
-      if (role === "ME" || role === "MD") return 28;
-      if (role === "ALA") return 30;
-      if (this.isForward({ role })) return 13;
-      return 0;
+      return this.getRoleBehavior(role).attackPush || 0;
     }
 
     getRoleDefensiveProgress(role, blockProgress) {
-      if (["ZAG", "LE", "LD"].includes(role)) return blockProgress;
-      if (["VOL", "MC", "ME", "MD"].includes(role)) return this.clamp(blockProgress + 16, 28, 75);
-      if (this.isForward({ role })) return this.clamp(blockProgress + 31, 43, 88);
-      return 8;
+      const line = this.getRoleBehavior(role).defensiveLine || { offset: 0, min: 8, max: 8 };
+      return this.clamp(blockProgress + line.offset, line.min, line.max);
     }
 
     getPlayerSpeed(player) {
       const paceFactor = this.clamp(0.65 + player.attributes.physical / 160, 0.68, 1.28);
-      if (player.role === "GOL") return 3.6 * paceFactor;
-      if (this.isWide(player)) return 9 * paceFactor;
-      if (this.isForward(player)) return 8.6 * paceFactor;
-      if (player.role === "ZAG") return 6.4 * paceFactor;
-      return 7.4 * paceFactor;
+      return this.getRoleBehavior(player.role).speed * paceFactor;
     }
 
     getCarrierCarryDistance(player) {
-      if (player.role === "ZAG") return 2.2;
-      if (player.role === "VOL") return 3.5;
-      if (this.isWide(player)) return 6.5;
-      if (this.isForward(player)) return 6.2;
-      return 5.2;
+      return this.getRoleBehavior(player.role).carryDistance;
     }
 
     getDecisionDelay(player) {
@@ -2604,19 +2639,19 @@
     }
 
     isWide(player) {
-      return ["LE", "LD", "ME", "MD", "ALA", "PE", "PD"].includes(player.role);
+      return this.roleHasGroup(player.role, "wide");
     }
 
     isFullback(player) {
-      return ["LE", "LD"].includes(player.role);
+      return this.roleHasGroup(player.role, "fullback");
     }
 
     isWideMidfielder(player) {
-      return ["ME", "MD"].includes(player.role);
+      return this.roleHasGroup(player.role, "wideMidfielder");
     }
 
     isDefensive(player) {
-      return ["GOL", "ZAG", "LE", "LD", "VOL"].includes(player.role);
+      return this.roleHasGroup(player.role, "defensive");
     }
 
     isBallSide(player) {

@@ -26,6 +26,8 @@ The current product surface is a live match simulator: two teams line up in a 4-
 - Throw-in: the restart awarded to the opponent of the last-touch team when the ball crosses a touchline.
 - Corner: the attacking-team restart awarded when the defending team last touches the ball before it crosses its own end line outside the goal.
 - Goal kick: the defending-team restart awarded when the attacking team last touches the ball before it crosses the defending end line outside the goal.
+- Goal area: the small box in front of each goal where the goalkeeper normally stays when not participating in build-up.
+- Penalty area: the large box in front of each goal where penalties are awarded for defending fouls and where the goalkeeper may support build-up.
 - Penalty: a direct shot against the goalkeeper awarded for a defending foul inside the defender's own penalty area.
 - Simulation time: continuous elapsed time advanced through fixed internal steps. Match-clock time is derived from simulation time, while playback speed controls how quickly simulation time is consumed.
 - Tactical context: a derived snapshot for one team: phase, intent, pressure zone, ball side, line centers, mentality, and defensive line.
@@ -78,7 +80,7 @@ Important tactical concepts:
 - Off-ball movement, decision speed, support selection, and composure use intelligence.
 - Marking, pressure, lane closure, and interceptions combine defense and intelligence.
 - Shots combine technique and intelligence. Goalkeepers combine defense and intelligence when attempting saves.
-- Goalkeepers normally stay close to goal and advance only slightly with build-up. They close down a carrier only on a clear one-on-one and are always constrained to their own penalty area.
+- Goalkeepers normally stay inside their own goal area. During build-up they may advance within their own penalty area to support circulation.
 - Counter-attacks and post-loss press are temporary team states after possession changes.
 
 ## UI Model

@@ -1,0 +1,3 @@
+[submodule "gofile-dl"]
+	path = gofile-dl
+	url = https://github.com/rkwyu/gofile-dl

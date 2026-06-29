@@ -860,26 +860,35 @@ test("a receiver level with the second-last opponent or behind the ball is onsid
   assert.equal(engine.getOffsidePosition(receiver, passer).isOffside, false);
 });
 
-test("goalkeepers stay close to goal during normal play and only close down a clear one-on-one", () => {
+test("goalkeepers stay in the goal area except during build-up", () => {
   const engine = new MatchEngine({
     teams: createTeams(),
     seed: 31,
     autonomous: false
   });
-  const defendingTeam = engine.teams[0];
-  const goalkeeper = defendingTeam.players.find((player) => player.role === "GOL");
-  const attackingTeam = engine.teams[1];
-  const attacker = attackingTeam.players.find((player) => player.role === "ATA");
+  const team = engine.teams[0];
+  const goalkeeper = team.players.find((player) => player.role === "GOL");
+  const opponent = engine.teams[1];
+  const attacker = opponent.players.find((player) => player.role === "ATA");
 
-  const ownCarrier = defendingTeam.players.find((player) => player.role === "MC");
+  const ownCarrier = team.players.find((player) => player.role === "ZAG");
+  ownCarrier.x = 50;
+  ownCarrier.y = 88;
   engine.setBallController(ownCarrier);
   engine.updateTacticalTargets();
-  assert.ok(Math.abs(goalkeeper.targetX - 50) <= 2.5);
-  assert.ok(Math.abs(goalkeeper.targetY - goalkeeper.baseY) <= 2.2);
+  assert.ok(goalkeeper.targetY <= 85.2);
+  assert.ok(goalkeeper.targetY >= 84.5);
+  assert.ok(goalkeeper.targetX >= 25.5 && goalkeeper.targetX <= 74.5);
+
+  ownCarrier.y = 50;
+  engine.setBallController(ownCarrier);
+  engine.updateTacticalTargets();
+  assert.ok(goalkeeper.targetY >= 91);
+  assert.ok(goalkeeper.targetX >= 36.5 && goalkeeper.targetX <= 63.5);
 
   attacker.x = 50;
   attacker.y = 72;
-  defendingTeam.players
+  team.players
     .filter((player) => player.role !== "GOL")
     .forEach((player, index) => {
       player.x = index % 2 ? 12 : 88;
@@ -888,18 +897,53 @@ test("goalkeepers stay close to goal during normal play and only close down a cl
   engine.setBallController(attacker);
   engine.updateTacticalTargets();
 
-  assert.equal(engine.isGoalkeeperOneOnOne(defendingTeam, attacker), true);
-  assert.ok(goalkeeper.targetY < goalkeeper.baseY - 4);
-  assert.ok(goalkeeper.targetY >= 84.5);
-  assert.ok(goalkeeper.targetX >= 25.5 && goalkeeper.targetX <= 74.5);
+  assert.equal(engine.isGoalkeeperOneOnOne(team, attacker), true);
+  assert.ok(goalkeeper.targetY >= 91);
+  assert.ok(goalkeeper.targetX >= 36.5 && goalkeeper.targetX <= 63.5);
+});
 
-  const coveringDefender = defendingTeam.players.find((player) => player.role === "ZAG");
-  coveringDefender.x = 50;
-  coveringDefender.y = 84;
-  engine.updateTacticalTargets();
+test("backward pass weight rises when the passer is under pressure", () => {
+  const weightedBackwardPass = (pressure) => {
+    const engine = new MatchEngine({
+      teams: createTeams(),
+      seed: 53,
+      autonomous: false
+    });
+    const team = engine.teams[0];
+    const passer = team.players.find((player) => player.role === "MC");
+    const backwardReceiver = team.players.find((player) => player.role === "ZAG");
+    const forwardReceiver = team.players.find((player) => player.role === "ATA");
+    passer.x = 50;
+    passer.y = 50;
+    passer.pressure = pressure;
+    backwardReceiver.x = 48;
+    backwardReceiver.y = 66;
+    backwardReceiver.pressure = 0.1;
+    forwardReceiver.x = 52;
+    forwardReceiver.y = 35;
+    forwardReceiver.pressure = 0.1;
+    engine.getOpponent(team).players.forEach((player) => {
+      player.x = player.baseX;
+      player.y = 8;
+    });
 
-  assert.equal(engine.isGoalkeeperOneOnOne(defendingTeam, attacker), false);
-  assert.ok(Math.abs(goalkeeper.targetY - goalkeeper.baseY) <= 0.35);
+    let candidates = [];
+    engine.pickWeighted = (items) => {
+      candidates = items;
+      return items[0]?.player || null;
+    };
+    engine.choosePassTarget(passer);
+
+    return candidates.find((candidate) => candidate.player === backwardReceiver).weight;
+  };
+
+  const lowPressureWeight = weightedBackwardPass(0.12);
+  const highPressureWeight = weightedBackwardPass(0.82);
+
+  assert.ok(
+    lowPressureWeight < highPressureWeight / 3,
+    `low=${lowPressureWeight}, high=${highPressureWeight}`
+  );
 });
 
 test("goalkeepers never leave their penalty area", () => {
