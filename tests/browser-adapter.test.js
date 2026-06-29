@@ -132,8 +132,32 @@ test("the browser adapter initializes the engine and mounts every player", () =>
   assert.equal(context.tacticsGame.engine.getSnapshot().teams.length, 2);
   assert.equal(context.tacticsGame.engine.matchClockRate, 15);
   assert.equal(context.tacticsGame.playerElements.size, 22);
+  const firstToken = [...context.tacticsGame.playerElements.values()][0];
+  assert.equal(firstToken.children[0].className, "player-token__number");
+  assert.equal(firstToken.children[1].className, "player-token__stamina");
+  assert.equal(firstToken.style.values.get("--stamina"), "100%");
+  assert.equal(firstToken.style.values.get("--stamina-color"), "#45c46d");
   assert.equal(document.getElementById("clock").textContent, "00'");
   assert.equal(document.getElementById("score").textContent, "0 x 0");
+
+  const staminaSnapshot = context.tacticsGame.engine.getSnapshot();
+  const firstPlayer = staminaSnapshot.teams[0].players[0];
+  firstPlayer.stamina = 42;
+  firstPlayer.sprintStamina = 80;
+  firstPlayer.visibleStamina = 42;
+  firstPlayer.movementMode = "run";
+  context.tacticsGame.renderPlayers(staminaSnapshot);
+  const updatedToken = context.tacticsGame.playerElements.get(firstPlayer.id);
+  assert.equal(updatedToken.style.values.get("--stamina"), "42%");
+  assert.equal(updatedToken.style.values.get("--stamina-color"), "#f0ca4d");
+  assert.equal(updatedToken.dataset.movementMode, "run");
+  assert.match(updatedToken.title, /Stamina 42%/);
+
+  firstPlayer.stamina = 80;
+  firstPlayer.sprintStamina = 24;
+  delete firstPlayer.visibleStamina;
+  context.tacticsGame.renderPlayers(staminaSnapshot);
+  assert.equal(updatedToken.style.values.get("--stamina"), "24%");
 
   const restartSnapshot = context.tacticsGame.engine.getSnapshot();
   restartSnapshot.ball.mode = "out";

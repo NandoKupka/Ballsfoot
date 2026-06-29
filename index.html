@@ -427,6 +427,8 @@
 
     .player-token {
       --size: clamp(28px, 4.2vw, 36px);
+      --stamina: 100%;
+      --stamina-color: #45c46d;
       position: absolute;
       left: calc(var(--x) * 1%);
       top: calc(var(--y) * 1%);
@@ -441,6 +443,7 @@
       font-size: 14px;
       transform: translate(-50%, -50%);
       z-index: 3;
+      isolation: isolate;
       box-shadow: 0 7px 18px rgba(0, 0, 0, 0.32);
       transition: left var(--player-move-ms) ease, top var(--player-move-ms) ease, box-shadow 160ms ease, border-color 160ms ease;
       user-select: none;
@@ -448,6 +451,27 @@
 
     .player-token {
       background: radial-gradient(circle at 35% 25%, var(--team-highlight) 0%, var(--team-color) 48%, var(--team-deep) 100%);
+    }
+
+    .player-token__number {
+      line-height: 1;
+      pointer-events: none;
+      position: relative;
+      z-index: 2;
+    }
+
+    .player-token__stamina {
+      position: absolute;
+      inset: -5px;
+      border-radius: 50%;
+      background: conic-gradient(var(--stamina-color) 0 var(--stamina), rgba(7, 22, 17, 0.56) var(--stamina) 100%);
+      -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 4px), #000 calc(100% - 3px));
+      mask: radial-gradient(farthest-side, transparent calc(100% - 4px), #000 calc(100% - 3px));
+      opacity: 0.96;
+      filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.34));
+      pointer-events: none;
+      transition: background 180ms ease;
+      z-index: 1;
     }
 
     .player-token.has-ball {

@@ -37,6 +37,27 @@
     xMax: 62,
     depth: 4
   };
+  const MOVEMENT_MODES = {
+    walk: {
+      speedRatio: 0.36,
+      accelerationRatio: 0.52,
+      generalStaminaPerSecond: -0.018,
+      sprintStaminaPerSecond: 18
+    },
+    trot: {
+      speedRatio: 0.68,
+      accelerationRatio: 0.78,
+      generalStaminaPerSecond: -0.085,
+      sprintStaminaPerSecond: 8
+    },
+    run: {
+      speedRatio: 1,
+      accelerationRatio: 1.08,
+      generalStaminaPerSecond: -0.22,
+      sprintStaminaPerSecond: -30
+    }
+  };
+  const MIN_RUN_STAMINA = 30;
   const FALLBACK_FORMATION_442 = {
     id: "4-4-2",
     name: "4-4-2",
@@ -274,6 +295,9 @@
             targetY: 50,
             velocityX: 0,
             velocityY: 0,
+            stamina: 100,
+            sprintStamina: 100,
+            movementMode: "walk",
             pressure: 0,
             spaceScore: 0,
             movementPhase: this.random.next() * Math.PI * 2,
@@ -363,6 +387,9 @@
       return {
         touches: 0,
         distanceCovered: 0,
+        walkDistance: 0,
+        trotDistance: 0,
+        runDistance: 0,
         passesAttempted: 0,
         passesCompleted: 0,
         shots: 0,
@@ -393,6 +420,7 @@
           player.targetY = player.y;
           player.velocityX = 0;
           player.velocityY = 0;
+          player.movementMode = "walk";
         });
       });
 
@@ -510,6 +538,9 @@
         team.players.forEach((player) => {
           player.matchStats = this.createPlayerMatchStats();
           player.nextTackleAttemptMs = 0;
+          player.stamina = 100;
+          player.sprintStamina = 100;
+          player.movementMode = "walk";
         });
       });
       this.lastControlledTeamId = null;
@@ -1541,7 +1572,12 @@
       this.teams.forEach((team) => {
         team.players.forEach((player) => {
           const distance = Math.hypot(player.targetX - player.x, player.targetY - player.y);
-          const baseSpeed = this.getPlayerSpeed(player);
+          const movementMode = this.getMovementMode(player, team, distance, controller);
+          const movementProfile = this.getPlayerMovementProfile(player);
+          const modeProfile = MOVEMENT_MODES[movementMode];
+          player.movementMode = movementMode;
+          this.updatePlayerStamina(player, movementMode, seconds);
+          const baseSpeed = movementProfile[movementMode];
           const pressurePenalty = player === controller && player.pressure > 0.55 ? 0.82 : 1;
           const arrivalFactor = this.clamp(distance / 4.5, 0.12, 1);
           const desiredSpeed = baseSpeed * pressurePenalty * arrivalFactor;
@@ -1554,6 +1590,7 @@
           const accelerationFactor = 0.68 + player.attributes.physical / 160;
           const acceleration = (this.isForward(player) || this.isWide(player) ? 20 : 17) *
             accelerationFactor *
+            modeProfile.accelerationRatio *
             seconds;
           player.velocityX = this.approach(player.velocityX, desiredVelocity.x, acceleration);
           player.velocityY = this.approach(player.velocityY, desiredVelocity.y, acceleration);
@@ -1573,6 +1610,7 @@
             player.y += stepY;
           }
           player.matchStats.distanceCovered += travelledDistance;
+          this.recordMovementDistance(player, movementMode, travelledDistance);
           player.x = this.clamp(player.x, 4, 96);
           player.y = this.clamp(player.y, 3, 97);
           if (player.role === "GOL") {
@@ -2628,6 +2666,80 @@
       return this.getRoleBehavior(player.role).speed * paceFactor;
     }
 
+    getPlayerMovementProfile(player) {
+      const runSpeed = this.getPlayerSpeed(player);
+      return Object.keys(MOVEMENT_MODES).reduce((profile, mode) => {
+        profile[mode] = runSpeed * MOVEMENT_MODES[mode].speedRatio;
+        return profile;
+      }, {});
+    }
+
+    getMovementMode(player, team, distance, controller) {
+      const sprintStamina = this.getEffectiveSprintStamina(player);
+      if (distance < 0.65) return "walk";
+      if (this.isRunUrgent(player, team, distance, controller) && sprintStamina >= MIN_RUN_STAMINA) {
+        return "run";
+      }
+      return distance > 1.4 ? "trot" : "walk";
+    }
+
+    isRunUrgent(player, team, distance, controller) {
+      if (distance < 4.5) return false;
+      if (player === controller && player.pressure > 0.5) return true;
+      if (player.id === team.tacticalState.pressingPlayerId) return true;
+      if (team.tacticalState.transition === "counter" &&
+        this.possession?.teamId === team.id &&
+        (player === controller || player.id === team.tacticalState.runningForwardId)) {
+        return true;
+      }
+      if (this.ball.mode === "travelling" && player.id === this.ball.intendedReceiverId) return true;
+      if (player.markingTargetId && distance >= 6) return true;
+      return Boolean(this.possession?.teamId === team.id &&
+        distance >= 8 &&
+        (player.id === team.tacticalState.runningForwardId || player.id === team.tacticalState.activeFullbackId));
+    }
+
+    updatePlayerStamina(player, movementMode, seconds) {
+      const mode = MOVEMENT_MODES[movementMode] || MOVEMENT_MODES.walk;
+      const stamina = Number.isFinite(player.stamina) ? player.stamina : 100;
+      const sprintStamina = Number.isFinite(player.sprintStamina) ? player.sprintStamina : 100;
+      const endurance = this.clamp(0.82 + player.attributes.physical / 350, 0.85, 1.12);
+      const generalDelta = mode.generalStaminaPerSecond / endurance;
+      const sprintDelta = mode.sprintStaminaPerSecond < 0
+        ? mode.sprintStaminaPerSecond / endurance
+        : mode.sprintStaminaPerSecond * endurance;
+      player.stamina = this.clamp(stamina + generalDelta * seconds, 0, 100);
+      player.sprintStamina = this.clamp(
+        sprintStamina + sprintDelta * seconds,
+        0,
+        this.getSprintCapacity(player)
+      );
+    }
+
+    getSprintCapacity(player) {
+      const stamina = Number.isFinite(player.stamina) ? player.stamina : 100;
+      return this.clamp(stamina + 8, 0, 100);
+    }
+
+    getEffectiveSprintStamina(player) {
+      const sprintStamina = Number.isFinite(player.sprintStamina) ? player.sprintStamina : 100;
+      return Math.min(sprintStamina, this.getSprintCapacity(player));
+    }
+
+    getVisibleStamina(player) {
+      const stamina = Number.isFinite(player.stamina) ? player.stamina : 100;
+      return this.clamp(Math.min(stamina, this.getEffectiveSprintStamina(player)), 0, 100);
+    }
+
+    recordMovementDistance(player, movementMode, travelledDistance) {
+      const statName = {
+        walk: "walkDistance",
+        trot: "trotDistance",
+        run: "runDistance"
+      }[movementMode];
+      if (statName) player.matchStats[statName] += travelledDistance;
+    }
+
     getCarrierCarryDistance(player) {
       return this.getRoleBehavior(player.role).carryDistance;
     }
@@ -2777,6 +2889,7 @@
           tacticalState: { ...team.tacticalState },
           players: team.players.map((player) => ({
             ...player,
+            visibleStamina: this.getVisibleStamina(player),
             preferredPositions: [...player.preferredPositions],
             attributes: { ...player.attributes },
             matchStats: { ...player.matchStats }

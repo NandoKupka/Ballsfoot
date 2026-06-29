@@ -34,8 +34,8 @@
         { name: "Bruno Henrique", number: 8, preferredPositions: ["MD", "ME"], attributes: { physical: 70, technique: 70, intelligence: 70, defense: 70 } },
         { name: "Alan Patrick", number: 10, preferredPositions: ["MC"], attributes: { physical: 70, technique: 70, intelligence: 70, defense: 70 } },
         { name: "Carbonero", number: 7, preferredPositions: ["MD", "ATA"], attributes: { physical: 70, technique: 70, intelligence: 70, defense: 70 } },
-        { name: "Borre", number: 11, preferredPositions: ["ATA"], attributes: { physical: 70, technique: 70, intelligence: 70, defense: 70 } },
-        { name: "Alejandro", number: 9, preferredPositions: ["ATA"], attributes: { physical: 70, technique: 70, intelligence: 70, defense: 70 } }
+        { name: "Alejandro", number: 9, preferredPositions: ["ATA"], attributes: { physical: 70, technique: 70, intelligence: 70, defense: 70 } },
+        { name: "Borre", number: 11, preferredPositions: ["ATA"], attributes: { physical: 70, technique: 70, intelligence: 70, defense: 70 } }
       ]
     },
     {

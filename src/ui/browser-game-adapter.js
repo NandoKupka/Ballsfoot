@@ -133,12 +133,20 @@
       snapshot.teams.forEach((team) => {
         team.players.forEach((player) => {
           const token = this.document.createElement("div");
+          const number = this.document.createElement("span");
+          const stamina = this.document.createElement("span");
           token.className = "player-token";
-          token.textContent = player.number;
+          number.className = "player-token__number";
+          number.textContent = player.number;
+          stamina.className = "player-token__stamina";
           token.style.setProperty("--team-color", team.colors.main);
           token.style.setProperty("--team-deep", team.colors.deep);
           token.style.setProperty("--team-highlight", team.colors.highlight);
+          token.style.setProperty("--stamina", this.formatStaminaPercent(this.getPlayerVisibleStamina(player)));
+          token.style.setProperty("--stamina-color", this.getStaminaColor(this.getPlayerVisibleStamina(player)));
+          token.dataset.movementMode = player.movementMode || "walk";
           token.title = this.formatPlayerTooltip(team, player);
+          token.append(number, stamina);
           this.field.appendChild(token);
           this.playerElements.set(player.id, token);
         });
@@ -441,6 +449,9 @@
           if (!token) return;
           token.style.setProperty("--x", player.x);
           token.style.setProperty("--y", player.y);
+          token.style.setProperty("--stamina", this.formatStaminaPercent(this.getPlayerVisibleStamina(player)));
+          token.style.setProperty("--stamina-color", this.getStaminaColor(this.getPlayerVisibleStamina(player)));
+          token.dataset.movementMode = player.movementMode || "walk";
           token.classList.toggle("has-ball", snapshot.ball.controllerId === player.id);
           token.title = this.formatPlayerTooltip(team, player);
         });
@@ -481,12 +492,40 @@
       return `OVR ${player.overall} | FIS ${attributes.physical} TEC ${attributes.technique} INT ${attributes.intelligence} DEF ${attributes.defense}`;
     }
 
+    formatStaminaPercent(stamina) {
+      const value = Number.isFinite(stamina) ? stamina : 100;
+      return `${Math.round(Math.max(0, Math.min(100, value)))}%`;
+    }
+
+    getPlayerVisibleStamina(player) {
+      if (Number.isFinite(player.visibleStamina)) return player.visibleStamina;
+      const stamina = Number.isFinite(player.stamina) ? player.stamina : 100;
+      const sprintStamina = Number.isFinite(player.sprintStamina) ? player.sprintStamina : 100;
+      return Math.min(stamina, sprintStamina);
+    }
+
+    getStaminaColor(stamina) {
+      const value = Number.isFinite(stamina) ? stamina : 100;
+      if (value < 30) return "#e55353";
+      if (value < 60) return "#f0ca4d";
+      return "#45c46d";
+    }
+
+    formatMovementMode(mode) {
+      return {
+        walk: "andando",
+        trot: "trotando",
+        run: "correndo"
+      }[mode] || "andando";
+    }
+
     formatPlayerTooltip(team, player) {
       const attributes = player.attributes;
       const stats = player.matchStats;
       return [
         `${team.name} ${player.number} - ${player.name} (${player.role}) OVR ${player.overall}`,
         `FIS ${attributes.physical} | TEC ${attributes.technique} | INT ${attributes.intelligence} | DEF ${attributes.defense}`,
+        `Stamina ${this.formatStaminaPercent(this.getPlayerVisibleStamina(player))} | Ritmo ${this.formatMovementMode(player.movementMode)}`,
         `Partida: ${stats.passesCompleted}/${stats.passesAttempted} passes | ${stats.oneTouchPasses} de primeira | ${stats.shots} chutes | ${stats.goals} gols | ${stats.interceptions} interceptacoes | ${stats.tacklesWon}/${stats.tacklesAttempted} desarmes | ${stats.foulsCommitted} faltas`
       ].join("\n");
     }

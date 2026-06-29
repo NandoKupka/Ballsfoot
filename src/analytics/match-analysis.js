@@ -150,6 +150,9 @@
             matches: 0,
             touches: 0,
             distanceCovered: 0,
+            walkDistance: 0,
+            trotDistance: 0,
+            runDistance: 0,
             passesAttempted: 0,
             passesCompleted: 0,
             shots: 0,
@@ -224,6 +227,9 @@
       .map((player) => ({
         ...player,
         distanceCovered: round(player.distanceCovered),
+        walkDistance: round(player.walkDistance),
+        trotDistance: round(player.trotDistance),
+        runDistance: round(player.runDistance),
         passCompletionRate: rate(player.passesCompleted, player.passesAttempted),
         goalsPerMatch: round(player.goals / player.matches),
         shotsPerMatch: round(player.shots / player.matches)

@@ -445,11 +445,14 @@ test("overall is derived from the four attributes and players accumulate match s
     "passesAttempted",
     "passesCompleted",
     "recoveries",
+    "runDistance",
     "saves",
     "shots",
     "tacklesAttempted",
     "tacklesWon",
-    "touches"
+    "touches",
+    "trotDistance",
+    "walkDistance"
   ]);
 
   const receiver = team.players.find((player) => player.id !== initial.ball.controllerId);
@@ -480,6 +483,10 @@ test("each canonical attribute influences its matching action group", () => {
   player.attributes.physical = 95;
   const highPhysicalSpeed = engine.getPlayerSpeed(player);
   assert.ok(highPhysicalSpeed > lowPhysicalSpeed);
+  const movementProfile = engine.getPlayerMovementProfile(player);
+  assert.ok(movementProfile.walk < movementProfile.trot);
+  assert.ok(movementProfile.trot < movementProfile.run);
+  assert.equal(movementProfile.run, highPhysicalSpeed);
 
   player.pressure = 0;
   player.attributes.intelligence = 20;
@@ -525,6 +532,83 @@ test("each canonical attribute influences its matching action group", () => {
     [opponent]
   );
   assert.ok(highDefensiveLaneSafety < lowDefensiveLaneSafety);
+});
+
+test("urgent movement spends stamina on sprints and recovers at lower tempo", () => {
+  const engine = new MatchEngine({
+    teams: createTeams(),
+    seed: 34,
+    autonomous: false
+  });
+  const team = engine.teams[0];
+  const runner = team.players.find((player) => player.role === "ATA");
+  runner.x = 50;
+  runner.y = 70;
+  runner.targetX = 50;
+  runner.targetY = 30;
+  runner.stamina = 100;
+  runner.sprintStamina = 100;
+  team.tacticalState.transition = "counter";
+  engine.setBallController(runner);
+
+  engine.movePlayers(1_000);
+
+  assert.equal(runner.movementMode, "run");
+  assert.ok(runner.stamina < 100);
+  assert.ok(runner.sprintStamina < 100);
+  assert.ok(runner.matchStats.runDistance > 0);
+
+  runner.stamina = 50;
+  runner.sprintStamina = 20;
+  runner.targetX = runner.x;
+  runner.targetY = runner.y;
+  team.tacticalState.transition = null;
+  engine.movePlayers(1_000);
+
+  assert.equal(runner.movementMode, "walk");
+  assert.ok(runner.stamina < 50);
+  assert.ok(runner.sprintStamina > 20);
+  assert.ok(runner.matchStats.walkDistance >= 0);
+});
+
+test("low stamina prevents a player from sprinting", () => {
+  const engine = new MatchEngine({
+    teams: createTeams(),
+    seed: 36,
+    autonomous: false
+  });
+  const team = engine.teams[0];
+  const runner = team.players.find((player) => player.role === "ATA");
+  runner.x = 50;
+  runner.y = 70;
+  runner.targetX = 50;
+  runner.targetY = 30;
+  runner.stamina = 80;
+  runner.sprintStamina = 5;
+  team.tacticalState.transition = "counter";
+
+  engine.movePlayers(50);
+
+  assert.equal(runner.movementMode, "trot");
+  assert.equal(runner.matchStats.runDistance, 0);
+});
+
+test("visible stamina is limited by both match fatigue and short sprint energy", () => {
+  const engine = new MatchEngine({
+    teams: createTeams(),
+    seed: 38,
+    autonomous: false
+  });
+  const player = engine.teams[0].players.find((candidate) => candidate.role === "ATA");
+
+  player.stamina = 82;
+  player.sprintStamina = 35;
+  assert.equal(engine.getVisibleStamina(player), 35);
+
+  player.stamina = 42;
+  player.sprintStamina = 90;
+  assert.equal(engine.getVisibleStamina(player), 42);
+  assert.equal(engine.getSnapshot().teams[0].players.find((candidate) => candidate.id === player.id).visibleStamina, 42);
 });
 
 test("high pressure can trigger a first-time return pass for a wall pass", () => {
