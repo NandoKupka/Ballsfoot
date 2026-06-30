@@ -338,8 +338,15 @@ test("corner and offside show a one-second restart notice over the field", () =>
   assert.equal(document.getElementById("restart-notice-title").textContent, "Escanteio");
   assert.equal(timeoutDelay, 1000);
   assert.equal(document.getElementById("restart-notice-modal").style.values.get("--goal-modal-width"), "640px");
+  context.tacticsGame.frame(0);
+  context.tacticsGame.frame(250);
+  context.tacticsGame.frame(500);
+  context.tacticsGame.frame(750);
+  assert.equal(context.tacticsGame.engine.getSnapshot().ball.mode, "out");
+  assert.equal(context.tacticsGame.engine.getSnapshot().ball.restartReason, "corner");
   timeoutCallback();
   assert.equal(document.getElementById("restart-notice-modal").hidden, true);
+  assert.equal(context.tacticsGame.engine.getSnapshot().ball.action, "corner_cross");
 
   context.tacticsGame.openRestartNotice({
     type: "offside",

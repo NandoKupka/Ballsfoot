@@ -27,6 +27,8 @@
       this.matchSequence = 1;
       this.copyFeedbackTimer = null;
       this.restartNoticeTimer = null;
+      this.restartNoticeBlocking = false;
+      this.restartNoticeReason = null;
       this.seed = options.seed ?? Date.now();
       this.lastPanelRenderAt = 0;
       this.lastRenderedState = null;
@@ -199,7 +201,7 @@
       this.lastFrameAt = timestamp;
       let snapshot = this.engine.getSnapshot();
 
-      if (snapshot.match.state === "playing") {
+      if (snapshot.match.state === "playing" && !this.restartNoticeBlocking) {
         snapshot = this.engine.advance(deltaMs * this.speed);
       }
 
@@ -854,12 +856,24 @@
       this.restartNoticeTitle.textContent = copy.title;
       this.restartNoticeDetail.textContent = copy.detail;
       this.restartNoticeModal.hidden = false;
+      this.restartNoticeBlocking = true;
+      this.restartNoticeReason = event.type === "corner_awarded" ? "corner" : "offside";
       this.positionRestartNotice();
 
       if (this.restartNoticeTimer) root.clearTimeout(this.restartNoticeTimer);
       this.restartNoticeTimer = root.setTimeout(() => {
+        const reason = this.restartNoticeReason;
         this.restartNoticeModal.hidden = true;
+        this.restartNoticeBlocking = false;
+        this.restartNoticeReason = null;
         this.restartNoticeTimer = null;
+        const liveSnapshot = this.engine.getSnapshot();
+        if (liveSnapshot.ball.mode === "out" && liveSnapshot.ball.restartReason === reason) {
+          this.engine.command({ type: "takeRestart" });
+          const restartedSnapshot = this.engine.getSnapshot();
+          this.consumeEvents(restartedSnapshot);
+          this.render(root.performance?.now?.() || Date.now(), restartedSnapshot);
+        }
       }, 1000);
     }
 
