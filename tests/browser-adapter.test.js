@@ -72,10 +72,14 @@ class FakeDocument {
       "score-home-label", "score-away-label", "status-text", "status-dot", "controls",
       "speed-slider", "speed-value", "event-log", "key-moments", "match-stats",
       "log-count", "copy-logs", "copy-jsonl", "copy-csv", "download-json",
-      "copy-feedback", "goal-modal", "goal-team", "goal-title", "goal-detail", "goal-ok"
+      "test-throw-in", "test-corner", "test-penalty", "test-free-kick",
+      "copy-feedback", "goal-modal", "goal-team", "goal-title", "goal-detail", "goal-ok",
+      "set-piece-modal", "set-piece-team", "set-piece-title", "set-piece-detail",
+      "set-piece-list", "set-piece-auto"
     ].forEach((id) => this.elements.set(id, new FakeElement()));
 
     this.elements.get("goal-modal").hidden = true;
+    this.elements.get("set-piece-modal").hidden = true;
     this.elements.get("speed-slider").value = "1";
   }
 
@@ -171,6 +175,121 @@ test("the browser adapter initializes the engine and mounts every player", () =>
     data: { teamId: restartSnapshot.teams[0].id }
   }, restartSnapshot);
   assert.equal(cornerEntry.title, "Escanteio");
+});
+
+test("test penalty opens a sorted set-piece taker picker and pauses the match", () => {
+  const document = new FakeDocument();
+  const context = vm.createContext({
+    console,
+    document,
+    navigator: { clipboard: { writeText: async () => {} } },
+    performance: { now: () => 0 },
+    requestAnimationFrame: () => 1,
+    cancelAnimationFrame: () => {},
+    addEventListener: () => {},
+    clearTimeout,
+    setTimeout,
+    Blob,
+    URL: {
+      createObjectURL: () => "blob:test",
+      revokeObjectURL: () => {}
+    }
+  });
+  context.globalThis = context;
+
+  const root = path.resolve(__dirname, "..");
+  vm.runInContext(fs.readFileSync(path.join(root, "src", "config", "teams.js"), "utf8"), context);
+  vm.runInContext(fs.readFileSync(path.join(root, "src", "domain", "match-engine.js"), "utf8"), context);
+  vm.runInContext(fs.readFileSync(path.join(root, "src", "ui", "browser-game-adapter.js"), "utf8"), context);
+  document.listeners.get("DOMContentLoaded")();
+
+  const game = context.tacticsGame;
+  const sorted = game.getSetPieceCandidates({
+    players: [
+      { name: "Baixa tecnica", number: 8, role: "MC", attributes: { technique: 50, intelligence: 80 } },
+      { name: "Alta tecnica", number: 10, role: "MC", attributes: { technique: 92, intelligence: 70 } },
+      { name: "Goleiro", number: 1, role: "GOL", attributes: { technique: 99, intelligence: 99 } }
+    ]
+  }, "free_kick");
+  assert.equal(sorted[0].name, "Alta tecnica");
+
+  document.getElementById("test-penalty").listeners.get("click")();
+
+  assert.equal(document.getElementById("set-piece-modal").hidden, false);
+  assert.equal(game.engine.getSnapshot().match.state, "paused");
+  assert.equal(game.engine.getSnapshot().ball.restartReason, "penalty");
+  assert.equal(document.getElementById("set-piece-title").textContent, "Cobrador de penalti");
+  assert.ok(document.getElementById("set-piece-list").children.length > 0);
+
+  document.getElementById("set-piece-list").children[0].listeners.get("click")();
+  assert.equal(document.getElementById("set-piece-modal").hidden, true);
+  assert.notEqual(game.engine.getSnapshot().match.state, "paused");
+});
+
+test("test free kick opens a dangerous free-kick taker picker", () => {
+  const document = new FakeDocument();
+  const context = vm.createContext({
+    console,
+    document,
+    navigator: { clipboard: { writeText: async () => {} } },
+    performance: { now: () => 0 },
+    requestAnimationFrame: () => 1,
+    cancelAnimationFrame: () => {},
+    addEventListener: () => {},
+    clearTimeout,
+    setTimeout,
+    Blob,
+    URL: {
+      createObjectURL: () => "blob:test",
+      revokeObjectURL: () => {}
+    }
+  });
+  context.globalThis = context;
+
+  const root = path.resolve(__dirname, "..");
+  vm.runInContext(fs.readFileSync(path.join(root, "src", "config", "teams.js"), "utf8"), context);
+  vm.runInContext(fs.readFileSync(path.join(root, "src", "domain", "match-engine.js"), "utf8"), context);
+  vm.runInContext(fs.readFileSync(path.join(root, "src", "ui", "browser-game-adapter.js"), "utf8"), context);
+  document.listeners.get("DOMContentLoaded")();
+
+  document.getElementById("test-free-kick").listeners.get("click")();
+
+  assert.equal(document.getElementById("set-piece-modal").hidden, false);
+  assert.equal(context.tacticsGame.engine.getSnapshot().ball.restartReason, "free_kick");
+  assert.equal(context.tacticsGame.engine.getSnapshot().ball.restartDangerous, true);
+  assert.equal(document.getElementById("set-piece-title").textContent, "Cobrador da falta");
+  assert.match(document.getElementById("set-piece-detail").textContent, /finaliza direto/);
+});
+
+test("test buttons can stage non-selected restarts", () => {
+  const document = new FakeDocument();
+  const context = vm.createContext({
+    console,
+    document,
+    navigator: { clipboard: { writeText: async () => {} } },
+    performance: { now: () => 0 },
+    requestAnimationFrame: () => 1,
+    cancelAnimationFrame: () => {},
+    addEventListener: () => {},
+    clearTimeout,
+    setTimeout,
+    Blob,
+    URL: {
+      createObjectURL: () => "blob:test",
+      revokeObjectURL: () => {}
+    }
+  });
+  context.globalThis = context;
+
+  const root = path.resolve(__dirname, "..");
+  vm.runInContext(fs.readFileSync(path.join(root, "src", "config", "teams.js"), "utf8"), context);
+  vm.runInContext(fs.readFileSync(path.join(root, "src", "domain", "match-engine.js"), "utf8"), context);
+  vm.runInContext(fs.readFileSync(path.join(root, "src", "ui", "browser-game-adapter.js"), "utf8"), context);
+  document.listeners.get("DOMContentLoaded")();
+
+  document.getElementById("test-corner").listeners.get("click")();
+  assert.equal(context.tacticsGame.engine.getSnapshot().ball.restartReason, "corner");
+  assert.equal(document.getElementById("set-piece-modal").hidden, true);
 });
 
 test("hidden export logs accumulate while the visible match log resets", () => {

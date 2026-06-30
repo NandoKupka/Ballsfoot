@@ -73,12 +73,22 @@
       this.copyJsonlButton = byId("copy-jsonl");
       this.copyCsvButton = byId("copy-csv");
       this.downloadJsonButton = byId("download-json");
+      this.testThrowInButton = byId("test-throw-in");
+      this.testCornerButton = byId("test-corner");
+      this.testPenaltyButton = byId("test-penalty");
+      this.testFreeKickButton = byId("test-free-kick");
       this.copyFeedback = byId("copy-feedback");
       this.goalModal = byId("goal-modal");
       this.goalTeam = byId("goal-team");
       this.goalTitle = byId("goal-title");
       this.goalDetail = byId("goal-detail");
       this.goalOkButton = byId("goal-ok");
+      this.setPieceModal = byId("set-piece-modal");
+      this.setPieceTeam = byId("set-piece-team");
+      this.setPieceTitle = byId("set-piece-title");
+      this.setPieceDetail = byId("set-piece-detail");
+      this.setPieceList = byId("set-piece-list");
+      this.setPieceAutoButton = byId("set-piece-auto");
     }
 
     renderTeamPanels() {
@@ -161,12 +171,20 @@
       this.copyJsonlButton.addEventListener("click", () => this.copyLogs("jsonl"));
       this.copyCsvButton.addEventListener("click", () => this.copyLogs("csv"));
       this.downloadJsonButton.addEventListener("click", () => this.downloadLogs());
+      this.testThrowInButton.addEventListener("click", () => this.createTestRestart("throw_in"));
+      this.testCornerButton.addEventListener("click", () => this.createTestRestart("corner"));
+      this.testPenaltyButton.addEventListener("click", () => this.createTestRestart("penalty"));
+      this.testFreeKickButton.addEventListener("click", () => this.createTestRestart("free_kick"));
       this.goalOkButton.addEventListener("click", () => {
         this.goalModal.hidden = true;
         this.engine.command({ type: "confirmGoal" });
         this.render();
       });
-      root.addEventListener("resize", () => this.positionGoalModal());
+      this.setPieceAutoButton.addEventListener("click", () => this.selectSetPieceTaker(null));
+      root.addEventListener("resize", () => {
+        this.positionGoalModal();
+        this.positionSetPieceModal();
+      });
     }
 
     frame(timestamp) {
@@ -201,7 +219,13 @@
         const entry = this.describeEvent(event, snapshot);
         if (entry) this.addLog(entry);
         if (event.type === "goal") this.openGoalModal(event, snapshot);
+        if (this.isSelectableSetPieceEvent(event)) this.openSetPieceModal(event, snapshot);
       });
+    }
+
+    isSelectableSetPieceEvent(event) {
+      return event.type === "penalty_awarded" ||
+        (event.type === "free_kick_awarded" && event.data.selectable);
     }
 
     describeEvent(event, snapshot = this.engine.getSnapshot()) {
@@ -295,8 +319,10 @@
           detail: `${team?.shortName || "O time"} reinicia desde a defesa.`
         },
         free_kick_awarded: {
-          title: "Tiro livre",
-          detail: `${team?.shortName || "O time"} tem uma bola parada.`
+          title: event.data.dangerous ? "Falta perigosa" : "Falta",
+          detail: event.data.dangerous
+            ? `${team?.shortName || "O time"} tem uma cobranca direta perto da area.`
+            : `${team?.shortName || "O time"} reinicia rapido com o jogador mais perto.`
         },
         penalty_awarded: {
           title: "Penalti marcado",
@@ -315,8 +341,10 @@
           detail: `${player?.name || "Jogador"} avanca com a bola.`
         },
         shot_started: {
-          title: "Finalizacao",
-          detail: `${player?.name || "Jogador"} chuta de ${Math.round(event.data.distance || 0)} unidades.`
+          title: event.data.setPiece === "free_kick" ? "Falta direta" : "Finalizacao",
+          detail: event.data.setPiece === "free_kick"
+            ? `${player?.name || "Jogador"} cobra direto de ${Math.round(event.data.distance || 0)} unidades.`
+            : `${player?.name || "Jogador"} chuta de ${Math.round(event.data.distance || 0)} unidades.`
         },
         shot_saved: {
           title: "Defesa",
@@ -341,6 +369,12 @@
         penalty_taken: {
           title: "Cobranca de penalti",
           detail: `${player?.name || "Jogador"} parte para a bola.`
+        },
+        free_kick_taken: {
+          title: "Cobranca de falta",
+          detail: event.data.direct
+            ? `${player?.name || "Jogador"} tenta a finalizacao direta.`
+            : `${player?.name || "Jogador"} prepara a bola parada.`
         },
         penalty_scored: {
           title: "Penalti convertido",
@@ -697,6 +731,81 @@
       }));
     }
 
+    createTestRestart(reason) {
+      this.engine.command({ type: "testRestart", reason });
+      const snapshot = this.engine.getSnapshot();
+      this.consumeEvents(snapshot);
+      this.render(root.performance?.now?.() || Date.now(), this.engine.getSnapshot());
+    }
+
+    openSetPieceModal(event, snapshot = this.engine.getSnapshot()) {
+      const reason = event.type === "penalty_awarded" ? "penalty" : "free_kick";
+      const team = snapshot.teams.find((candidate) => candidate.id === event.data.teamId);
+      if (!team || this.engine.getSnapshot().ball.mode !== "out") return;
+
+      if (this.engine.getSnapshot().match.state === "playing") {
+        this.engine.command({ type: "pause" });
+      }
+
+      this.setPieceTeam.textContent = team.shortName || team.name;
+      this.setPieceTitle.textContent = reason === "penalty" ? "Cobrador de penalti" : "Cobrador da falta";
+      this.setPieceDetail.textContent = reason === "penalty"
+        ? "Jogadores ordenados por tecnica para a cobranca."
+        : "Falta perigosa: escolha quem finaliza direto para o gol.";
+
+      const options = this.getSetPieceCandidates(team, reason).map((player) => {
+        const button = this.document.createElement("button");
+        const number = this.document.createElement("span");
+        const name = this.document.createElement("span");
+        const title = this.document.createElement("strong");
+        const detail = this.document.createElement("span");
+        const score = this.document.createElement("span");
+        const setPieceScore = this.getSetPieceScore(player, reason);
+
+        button.className = "set-piece-option";
+        button.type = "button";
+        number.className = "set-piece-number";
+        name.className = "set-piece-name";
+        score.className = "set-piece-score";
+        number.textContent = player.number;
+        title.textContent = player.name;
+        detail.textContent = `${player.role} | TEC ${player.attributes.technique} INT ${player.attributes.intelligence}`;
+        score.textContent = String(Math.round(setPieceScore));
+        name.append(title, detail);
+        button.append(number, name, score);
+        button.addEventListener("click", () => this.selectSetPieceTaker(player.id));
+        return button;
+      });
+
+      this.setPieceList.replaceChildren(...options);
+      this.setPieceModal.hidden = false;
+      this.positionSetPieceModal();
+      options[0]?.focus();
+    }
+
+    getSetPieceCandidates(team, reason) {
+      return [...team.players]
+        .filter((player) => player.role !== "GOL")
+        .sort((a, b) =>
+          this.getSetPieceScore(b, reason) - this.getSetPieceScore(a, reason) ||
+          b.attributes.technique - a.attributes.technique ||
+          a.number - b.number
+        );
+    }
+
+    getSetPieceScore(player, reason) {
+      const techniqueWeight = reason === "penalty" ? 0.7 : 0.76;
+      const intelligenceWeight = reason === "penalty" ? 0.3 : 0.24;
+      return player.attributes.technique * techniqueWeight + player.attributes.intelligence * intelligenceWeight;
+    }
+
+    selectSetPieceTaker(playerId) {
+      this.setPieceModal.hidden = true;
+      this.engine.command({ type: "takeRestart", playerId });
+      this.consumeEvents();
+      this.render(root.performance?.now?.() || Date.now(), this.engine.getSnapshot());
+    }
+
     openGoalModal(event, snapshot = this.engine.getSnapshot()) {
       const team = snapshot.teams.find((candidate) => candidate.id === event.data.teamId);
       const scorer = team?.players.find((player) => player.id === event.data.playerId);
@@ -715,6 +824,15 @@
       this.goalModal.style.setProperty("--goal-modal-top", `${rect.top + rect.height / 2}px`);
       this.goalModal.style.setProperty("--goal-modal-width", `${rect.width}px`);
       this.goalModal.style.setProperty("--goal-modal-height", `${rect.height}px`);
+    }
+
+    positionSetPieceModal() {
+      if (!this.field || this.setPieceModal.hidden) return;
+      const rect = this.field.getBoundingClientRect();
+      this.setPieceModal.style.setProperty("--goal-modal-left", `${rect.left + rect.width / 2}px`);
+      this.setPieceModal.style.setProperty("--goal-modal-top", `${rect.top + rect.height / 2}px`);
+      this.setPieceModal.style.setProperty("--goal-modal-width", `${rect.width}px`);
+      this.setPieceModal.style.setProperty("--goal-modal-height", `${rect.height}px`);
     }
 
     formatEventClock(matchMs) {

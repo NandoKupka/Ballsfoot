@@ -302,6 +302,82 @@ test("a foul outside the penalty area awards a free kick at the infringement poi
   assert.equal(defendingTeam.stats.fouls, 1);
 });
 
+test("a common free kick restarts automatically with the nearest player", () => {
+  const engine = new MatchEngine({
+    teams: createTeams(),
+    seed: 22,
+    matchClockRate: 1,
+    autonomous: false
+  });
+  const team = engine.teams[0];
+  const opponent = engine.getOpponent(team);
+  const nearest = team.players.find((player) => player.role === "MC");
+  const selected = team.players.find((player) => player.role === "ATA");
+  const goalkeeper = opponent.players.find((player) => player.role === "GOL");
+  const goalkeeperStart = { x: goalkeeper.x, y: goalkeeper.y };
+  team.players
+    .filter((player) => player.role !== "GOL")
+    .forEach((player, index) => {
+      player.x = 78 + index;
+      player.y = 82;
+    });
+  nearest.x = 49;
+  nearest.y = 51;
+  selected.x = 82;
+  selected.y = 18;
+
+  engine.scheduleRestart("free_kick", team, { x: 50, y: 50 }, 1_000);
+  engine.command({ type: "takeRestart", playerId: selected.id });
+
+  assert.equal(engine.state, "playing");
+  assert.equal(engine.ball.controllerId, nearest.id);
+  assert.deepEqual({ x: goalkeeper.x, y: goalkeeper.y }, goalkeeperStart);
+  const freeKick = engine.drainEvents().find((event) => event.type === "free_kick_taken");
+  assert.equal(freeKick.data.playerId, nearest.id);
+  assert.equal(freeKick.data.direct, false);
+});
+
+test("a dangerous free kick can be selected and is taken directly behind a wall", () => {
+  const engine = new MatchEngine({
+    teams: createTeams(),
+    seed: 24,
+    matchClockRate: 1,
+    autonomous: false
+  });
+  const team = engine.teams[0];
+  const selected = team.players.find((player) => player.role === "ATA");
+  selected.attributes.technique = 95;
+  selected.attributes.intelligence = 90;
+  engine.random.next = () => 0;
+
+  engine.scheduleRestart("free_kick", team, { x: 50, y: 24 }, 1_000);
+  const awarded = engine.drainEvents().find((event) => event.type === "free_kick_awarded");
+  assert.equal(awarded.data.dangerous, true);
+  assert.equal(awarded.data.selectable, true);
+  assert.equal(awarded.data.direct, true);
+  assert.equal(engine.getSnapshot().ball.restartDangerous, true);
+
+  const wall = engine.getOpponent(team).players
+    .filter((player) => player.role !== "GOL" && Math.abs(player.y - 16) < 0.001)
+    .sort((a, b) => a.x - b.x);
+  assert.equal(wall.length, 4);
+  assert.deepEqual(wall.map((player) => player.x), [44, 48, 52, 56]);
+
+  engine.command({ type: "takeRestart", playerId: selected.id });
+
+  const events = engine.drainEvents();
+  assert.ok(events.some((event) =>
+    event.type === "free_kick_taken" &&
+    event.data.playerId === selected.id &&
+    event.data.direct
+  ));
+  assert.ok(events.some((event) =>
+    event.type === "shot_started" &&
+    event.data.playerId === selected.id &&
+    event.data.setPiece === "free_kick"
+  ));
+});
+
 test("a defensive foul inside the penalty area awards a penalty", () => {
   const engine = new MatchEngine({
     teams: createTeams(),
@@ -555,7 +631,9 @@ test("urgent movement spends stamina on sprints and recovers at lower tempo", ()
 
   assert.equal(runner.movementMode, "run");
   assert.ok(runner.stamina < 100);
+  assert.ok(runner.stamina > 99.85);
   assert.ok(runner.sprintStamina < 100);
+  assert.ok(runner.sprintStamina > 85);
   assert.ok(runner.matchStats.runDistance > 0);
 
   runner.stamina = 50;
@@ -568,6 +646,7 @@ test("urgent movement spends stamina on sprints and recovers at lower tempo", ()
   assert.equal(runner.movementMode, "walk");
   assert.ok(runner.stamina < 50);
   assert.ok(runner.sprintStamina > 20);
+  assert.ok(runner.sprintStamina < 27);
   assert.ok(runner.matchStats.walkDistance >= 0);
 });
 

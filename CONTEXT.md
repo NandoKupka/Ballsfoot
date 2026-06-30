@@ -22,6 +22,8 @@ The current product surface is a live match simulator: two teams line up in a 4-
 - Interception: contact with an opponent's travelling pass that immediately establishes controlled possession for the defending team, including a deflection brought under control.
 - Tackle: a defensive challenge against the current possession holder that can win control, deflect the ball, be evaded, or commit a foul.
 - Foul: an illegal defensive challenge that stops play and awards the opponent a free kick, or a penalty when committed inside the defender's own penalty area.
+- Common free kick: a free kick outside direct shooting range. The nearest outfield player restarts play automatically from the infringement point.
+- Dangerous free kick: a free kick in direct shooting range. The attacking team may choose the taker, the defending team forms a wall, and the restart is resolved as a direct shot.
 - Restart: the controlled resumption of play after the ball is out or an infringement, including a throw-in, goal kick, corner, free kick, penalty, offside restart, or kickoff.
 - Throw-in: the restart awarded to the opponent of the last-touch team when the ball crosses a touchline.
 - Corner: the attacking-team restart awarded when the defending team last touches the ball before it crosses its own end line outside the goal.

@@ -31,10 +31,10 @@
         { name: "Mercado", number: 4, preferredPositions: ["ZAG"], attributes: { physical: 70, technique: 70, intelligence: 70, defense: 70 } },
         { name: "Bruno Gomes", number: 2, preferredPositions: ["LD", "MD"], attributes: { physical: 70, technique: 70, intelligence: 70, defense: 70 } },
         { name: "Villagra", number: 5, preferredPositions: ["VOL", "MC"], attributes: { physical: 70, technique: 70, intelligence: 70, defense: 70 } },
-        { name: "Bruno Henrique", number: 8, preferredPositions: ["MD", "ME"], attributes: { physical: 70, technique: 70, intelligence: 70, defense: 70 } },
-        { name: "Alan Patrick", number: 10, preferredPositions: ["MC"], attributes: { physical: 70, technique: 70, intelligence: 70, defense: 70 } },
+        { name: "Bruno Henrique", number: 8, preferredPositions: ["MD", "ME"], attributes: { physical: 99, technique: 70, intelligence: 99, defense: 70 } },
+        { name: "Alan Patrick", number: 10, preferredPositions: ["MC"], attributes: { physical: 70, technique: 70, intelligence: 99, defense: 70 } },
         { name: "Carbonero", number: 7, preferredPositions: ["MD", "ATA"], attributes: { physical: 70, technique: 70, intelligence: 70, defense: 70 } },
-        { name: "Alejandro", number: 9, preferredPositions: ["ATA"], attributes: { physical: 70, technique: 70, intelligence: 70, defense: 70 } },
+        { name: "Alejandro", number: 9, preferredPositions: ["ATA"], attributes: { physical: 99, technique: 99, intelligence: 99, defense: 99 } },
         { name: "Borre", number: 11, preferredPositions: ["ATA"], attributes: { physical: 70, technique: 70, intelligence: 70, defense: 70 } }
       ]
     },
@@ -51,7 +51,7 @@
         glow: "rgba(40, 120, 255, 0.32)"
       },
       players: [
-        { name: "Rafael", number: 1, preferredPositions: ["GOL"], attributes: { physical: 70, technique: 70, intelligence: 70, defense: 70 } },
+        { name: "Rafael", number: 1, preferredPositions: ["GOL"], attributes: { physical: 70, technique: 70, intelligence: 70, defense: 33 } },
         { name: "Bruno", number: 6, preferredPositions: ["LE", "ME"], attributes: { physical: 70, technique: 70, intelligence: 70, defense: 70 } },
         { name: "Caio", number: 3, preferredPositions: ["ZAG"], attributes: { physical: 70, technique: 70, intelligence: 70, defense: 70 } },
         { name: "Diego", number: 4, preferredPositions: ["ZAG"], attributes: { physical: 70, technique: 70, intelligence: 70, defense: 70 } },

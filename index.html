@@ -462,11 +462,11 @@
 
     .player-token__stamina {
       position: absolute;
-      inset: -5px;
+      inset: -3px;
       border-radius: 50%;
       background: conic-gradient(var(--stamina-color) 0 var(--stamina), rgba(7, 22, 17, 0.56) var(--stamina) 100%);
-      -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 4px), #000 calc(100% - 3px));
-      mask: radial-gradient(farthest-side, transparent calc(100% - 4px), #000 calc(100% - 3px));
+      -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 4px), #000 calc(100% - 2px));
+      mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 2px));
       opacity: 0.96;
       filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.34));
       pointer-events: none;
@@ -507,7 +507,7 @@
 
     .log-panel {
       min-width: 0;
-      height: min(560px, calc(100vh - 210px));
+      height: 80vh;
       min-height: 360px;
       display: grid;
       grid-template-rows: auto auto 1fr auto;
@@ -784,7 +784,8 @@
       box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.04);
     }
 
-    .goal-modal {
+    .goal-modal,
+    .set-piece-modal {
       position: fixed;
       left: var(--goal-modal-left, 50%);
       top: var(--goal-modal-top, 50%);
@@ -800,11 +801,13 @@
       pointer-events: auto;
     }
 
-    .goal-modal[hidden] {
+    .goal-modal[hidden],
+    .set-piece-modal[hidden] {
       display: none;
     }
 
-    .goal-dialog {
+    .goal-dialog,
+    .set-piece-dialog {
       width: min(330px, 100%);
       border: 1px solid rgba(255, 216, 79, 0.3);
       border-radius: var(--radius);
@@ -816,7 +819,13 @@
       text-align: center;
     }
 
-    .goal-eyebrow {
+    .set-piece-dialog {
+      width: min(390px, 100%);
+      text-align: left;
+    }
+
+    .goal-eyebrow,
+    .set-piece-eyebrow {
       justify-self: center;
       border: 1px solid rgba(255, 255, 255, 0.12);
       border-radius: 999px;
@@ -829,7 +838,8 @@
       letter-spacing: 0.08em;
     }
 
-    .goal-dialog h2 {
+    .goal-dialog h2,
+    .set-piece-dialog h2 {
       margin: 0;
       color: var(--yellow);
       font-size: clamp(25px, 4vw, 34px);
@@ -837,11 +847,76 @@
       line-height: 1;
     }
 
-    .goal-dialog p {
+    .goal-dialog p,
+    .set-piece-dialog p {
       margin: 0;
       color: var(--text);
       font-size: 13px;
       line-height: 1.45;
+    }
+
+    .set-piece-list {
+      display: grid;
+      gap: 7px;
+      max-height: min(360px, calc(100vh - 270px));
+      overflow: auto;
+      padding-right: 2px;
+    }
+
+    .set-piece-option {
+      width: 100%;
+      display: grid;
+      grid-template-columns: auto 1fr auto;
+      align-items: center;
+      gap: 9px;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.06);
+      color: var(--text);
+      padding: 8px 10px;
+      cursor: pointer;
+      text-align: left;
+    }
+
+    .set-piece-option:hover {
+      border-color: rgba(255, 216, 79, 0.46);
+      background: rgba(255, 216, 79, 0.12);
+    }
+
+    .set-piece-number {
+      width: 25px;
+      height: 25px;
+      display: grid;
+      place-items: center;
+      border-radius: 50%;
+      background: rgba(255, 255, 255, 0.12);
+      font-weight: 900;
+    }
+
+    .set-piece-name {
+      display: grid;
+      gap: 2px;
+    }
+
+    .set-piece-name strong,
+    .set-piece-score {
+      font-size: 12px;
+    }
+
+    .set-piece-name span {
+      color: var(--muted);
+      font-size: 11px;
+    }
+
+    .set-piece-score {
+      color: var(--yellow);
+      font-weight: 900;
+    }
+
+    .test-restart-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
     }
 
     @media (max-width: 1120px) {
@@ -962,6 +1037,12 @@
               <button class="btn" id="copy-csv" type="button">Copiar CSV</button>
               <button class="btn" id="download-json" type="button">Baixar JSON</button>
             </div>
+            <div class="test-restart-actions" aria-label="Gerar bola parada para teste">
+              <button class="btn" id="test-throw-in" type="button">Teste lateral</button>
+              <button class="btn" id="test-corner" type="button">Teste escanteio</button>
+              <button class="btn" id="test-penalty" type="button">Teste penalti</button>
+              <button class="btn" id="test-free-kick" type="button">Teste falta</button>
+            </div>
             <span class="copy-feedback" id="copy-feedback" aria-live="polite"></span>
           </div>
         </div>
@@ -977,6 +1058,16 @@
       <h2 id="goal-title">GOOOL!</h2>
       <p id="goal-detail"></p>
       <button class="btn primary" id="goal-ok" type="button">OK</button>
+    </div>
+  </div>
+
+  <div class="set-piece-modal" id="set-piece-modal" hidden>
+    <div class="set-piece-dialog" role="dialog" aria-modal="true" aria-labelledby="set-piece-title">
+      <span class="set-piece-eyebrow" id="set-piece-team">Bola parada</span>
+      <h2 id="set-piece-title">Escolha o cobrador</h2>
+      <p id="set-piece-detail"></p>
+      <div class="set-piece-list" id="set-piece-list"></div>
+      <button class="btn" id="set-piece-auto" type="button">Automatico</button>
     </div>
   </div>
 

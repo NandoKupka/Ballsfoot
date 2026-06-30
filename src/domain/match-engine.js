@@ -41,20 +41,20 @@
     walk: {
       speedRatio: 0.36,
       accelerationRatio: 0.52,
-      generalStaminaPerSecond: -0.018,
-      sprintStaminaPerSecond: 18
+      generalStaminaPerSecond: -0.008,
+      sprintStaminaPerSecond: 6
     },
     trot: {
       speedRatio: 0.68,
       accelerationRatio: 0.78,
-      generalStaminaPerSecond: -0.085,
-      sprintStaminaPerSecond: 8
+      generalStaminaPerSecond: -0.036,
+      sprintStaminaPerSecond: 3
     },
     run: {
       speedRatio: 1,
       accelerationRatio: 1.08,
-      generalStaminaPerSecond: -0.22,
-      sprintStaminaPerSecond: -30
+      generalStaminaPerSecond: -0.09,
+      sprintStaminaPerSecond: -12
     }
   };
   const MIN_RUN_STAMINA = 30;
@@ -237,6 +237,8 @@
         restartReason: null,
         restartX: null,
         restartY: null,
+        restartDangerous: false,
+        restartSelectable: false,
         oneTouch: false,
         oneTouchChain: 0,
         combination: false,
@@ -476,6 +478,18 @@
         return;
       }
 
+      if (command.type === "takeRestart" && this.ball.mode === "out") {
+        this.state = "playing";
+        this.restartRemainingMs = 0;
+        this.restartFromOut(command.playerId);
+        return;
+      }
+
+      if (command.type === "testRestart") {
+        this.createArtificialRestart(command.reason);
+        return;
+      }
+
       if (command.type === "reset") {
         this.reset();
       }
@@ -603,6 +617,8 @@
         restartReason: null,
         restartX: null,
         restartY: null,
+        restartDangerous: false,
+        restartSelectable: false,
         lastTouchedTeamId: passer.teamId,
         contactedPlayerIds: [],
         passerId: passer.id,
@@ -787,6 +803,8 @@
         restartReason: null,
         restartX: null,
         restartY: null,
+        restartDangerous: false,
+        restartSelectable: false,
         lastTouchedTeamId,
         contactedPlayerIds: [],
         passerId: null,
@@ -847,6 +865,8 @@
         restartReason: null,
         restartX: null,
         restartY: null,
+        restartDangerous: false,
+        restartSelectable: false,
         lastTouchedTeamId: player.teamId,
         contactedPlayerIds: [],
         passerId: null,
@@ -877,6 +897,8 @@
         restartReason: "offside",
         restartX: receiver.x,
         restartY: receiver.y,
+        restartDangerous: false,
+        restartSelectable: false,
         passerId: passer.id,
         lastTouchedTeamId: passer.teamId
       });
@@ -1683,11 +1705,11 @@
         0.68
       );
       const foulChance = this.clamp(
-        0.045 +
-          (1 - defender.attributes.intelligence / 100) * 0.11 +
+        0.06 +
+          (1 - defender.attributes.intelligence / 100) * 0.13 +
           Math.max(0, carrier.attributes.physical - defender.attributes.physical) / 500,
-        0.04,
-        0.2
+        0.055,
+        0.24
       );
       const deflectionChance = 0.16;
       const roll = this.random.next();
@@ -1831,11 +1853,11 @@
       )[0];
       if (!defender || this.distance(defender, carrier) > 2.8) return false;
       const foulChance = this.clamp(
-        0.018 +
-          carrier.pressure * 0.032 +
-          (1 - defender.attributes.intelligence / 100) * 0.02,
-        0.018,
-        0.07
+        0.026 +
+          carrier.pressure * 0.042 +
+          (1 - defender.attributes.intelligence / 100) * 0.028,
+        0.026,
+        0.095
       );
       if (this.random.next() > foulChance) return false;
       return this.resolveTackle(defender, carrier, "foul");
@@ -2156,6 +2178,7 @@
       const blocker = blockers[0] || null;
       const goal = this.getGoalPoint(team);
       const distance = this.distance(shooter, goal);
+      const shooterPressure = options.freeKick ? 0 : shooter.pressure;
       const finishingQuality = (
         shooter.attributes.technique * 0.68 +
         shooter.attributes.intelligence * 0.32
@@ -2167,16 +2190,17 @@
         (
           0.025 +
           (1 - this.clamp(distance / 48, 0, 1)) * 0.4 +
-          (1 - shooter.pressure) * 0.09
+          (1 - shooterPressure) * 0.09 +
+          (options.freeKick ? 0.075 + finishingQuality * 0.045 : 0)
         ) * (0.62 + finishingQuality * 0.58) -
           (goalkeeperQuality - 50) / 420,
         0.015,
-        0.6
-      ) * 0.65;
+        options.freeKick ? 0.72 : 0.6
+      ) * (options.freeKick ? 0.74 : 0.65);
       const adjustedGoalChance = this.clamp(
         goalChance,
         0.01,
-        0.42
+        options.freeKick ? 0.36 : 0.42
       );
       const roll = this.random.next();
       const saveChance = this.clamp(
@@ -2224,6 +2248,11 @@
         distance,
         outcome,
         restartTeamId: opponent.id,
+        restartReason: null,
+        restartX: null,
+        restartY: null,
+        restartDangerous: false,
+        restartSelectable: false,
         lastTouchedTeamId: ["parried", "blocked"].includes(outcome)
           ? opponent.id
           : shooter.teamId,
@@ -2242,7 +2271,8 @@
         teamId: team.id,
         playerId: shooter.id,
         distance,
-        goalChance: adjustedGoalChance
+        goalChance: adjustedGoalChance,
+        setPiece: options.setPiece || null
       });
     }
 
@@ -2259,11 +2289,13 @@
         ? (goalkeeper.attributes.defense * 0.7 + goalkeeper.attributes.intelligence * 0.3) / 100
         : 0.5;
       const goalChance = this.clamp(
-        0.68 + scoringQuality * 0.2 - goalkeeperQuality * 0.14,
-        0.58,
-        0.86
+        0.63 + scoringQuality * 0.26 - goalkeeperQuality * 0.1,
+        0.6,
+        0.88
       );
-      const saveChance = this.clamp(0.18 + goalkeeperQuality * 0.18, 0.2, 0.38);
+      const nonGoalChance = 1 - goalChance;
+      const saveShare = this.clamp(0.44 + goalkeeperQuality * 0.28 - scoringQuality * 0.14, 0.32, 0.72);
+      const saveChance = nonGoalChance * saveShare;
       const roll = this.random.next();
       const outcome = forcedOutcome || (
         roll < goalChance
@@ -2293,7 +2325,9 @@
           controllerId: null,
           action: null,
           restartTeamId: defendingTeam.id,
-          restartReason: "kickoff"
+          restartReason: "kickoff",
+          restartDangerous: false,
+          restartSelectable: false
         });
         this.possession = null;
         this.emit("penalty_scored", {
@@ -2507,10 +2541,179 @@
       }) || this.teams[0];
     }
 
+    createArtificialRestart(reason) {
+      const allowedReasons = ["throw_in", "corner", "penalty", "free_kick"];
+      if (!allowedReasons.includes(reason) || this.state === "finished" || this.state === "goalPause") return false;
+      if (this.state === "pre" || this.state === "halftime") this.state = "playing";
+      const team = this.getTeam(this.possession?.teamId) || this.teams[0];
+      const point = this.getArtificialRestartPoint(reason, team);
+      this.scheduleRestart(reason, team, point, reason === "penalty" ? 900 : 650, { artificial: true });
+      return true;
+    }
+
+    getArtificialRestartPoint(reason, team) {
+      const goal = this.getGoalPoint(team);
+      if (reason === "penalty") return { x: 50, y: goal.y === 100 ? 89 : 11 };
+      if (reason === "corner") {
+        return { x: this.random.next() < 0.5 ? 1 : 99, y: goal.y === 100 ? 99 : 1 };
+      }
+      if (reason === "throw_in") {
+        return {
+          x: this.random.next() < 0.5 ? 1 : 99,
+          y: this.clamp(goal.y === 100 ? 64 + this.random.next() * 22 : 36 - this.random.next() * 22, 8, 92)
+        };
+      }
+      return {
+        x: 50,
+        y: goal.y === 100 ? 76 : 24
+      };
+    }
+
+    isDangerousFreeKick(team, point) {
+      if (!team || !point) return false;
+      const goal = this.getGoalPoint(team);
+      const distance = this.distance(point, goal);
+      const anglePenalty = Math.abs(point.x - goal.x) / 50;
+      const attackingProgress = team.attacksDown ? point.y : 100 - point.y;
+      return attackingProgress >= 62 && distance <= 34 && anglePenalty <= 0.58;
+    }
+
+    getSetPieceTakerScore(player, reason = "free_kick") {
+      const techniqueWeight = reason === "penalty" ? 0.7 : 0.76;
+      const intelligenceWeight = reason === "penalty" ? 0.3 : 0.24;
+      return player.attributes.technique * techniqueWeight + player.attributes.intelligence * intelligenceWeight;
+    }
+
+    getRestartTaker(reason, team, point, selectedPlayerId = null) {
+      const outfield = team.players.filter((player) => player.role !== "GOL");
+      const selected = this.findPlayer(selectedPlayerId);
+      const dangerousFreeKick = reason === "free_kick" && this.isDangerousFreeKick(team, point);
+      if (
+        selected?.teamId === team.id &&
+        (selected.role !== "GOL" || reason === "goal_kick") &&
+        (reason !== "free_kick" || dangerousFreeKick)
+      ) {
+        return selected;
+      }
+      if (reason === "goal_kick") return team.players.find((player) => player.role === "GOL") || outfield[0] || team.players[0];
+      if (reason === "throw_in" || reason === "offside" || (reason === "free_kick" && !dangerousFreeKick)) {
+        return this.nearestPlayers(outfield, point, 1)[0] || team.players[0];
+      }
+      return [...outfield].sort((a, b) =>
+        this.getSetPieceTakerScore(b, reason) - this.getSetPieceTakerScore(a, reason) ||
+        b.attributes.technique - a.attributes.technique ||
+        a.number - b.number
+      )[0] || team.players[0];
+    }
+
+    placePlayerForRestart(player, x, y) {
+      player.x = this.clamp(x, 4, 96);
+      player.y = this.clamp(y, 3, 97);
+      player.targetX = player.x;
+      player.targetY = player.y;
+      player.velocityX = 0;
+      player.velocityY = 0;
+    }
+
+    positionForRestart(reason, team, point, restarter = null) {
+      const opponent = this.getOpponent(team);
+      const goal = this.getGoalPoint(team);
+      const direction = goal.y === 100 ? 1 : -1;
+      const attackers = team.players.filter((player) => player !== restarter && player.role !== "GOL");
+      const defenders = opponent.players.filter((player) => player.role !== "GOL");
+      const goalkeeper = opponent.players.find((player) => player.role === "GOL");
+
+      if (reason === "penalty" && restarter) {
+        this.positionForPenalty(restarter, opponent);
+        return;
+      }
+
+      if (restarter) {
+        const restartX = reason === "throw_in"
+          ? (point.x < 50 ? 4 : 96)
+          : this.clamp(point.x, reason === "corner" ? 4 : 5, reason === "corner" ? 96 : 95);
+        const restartY = reason === "corner"
+          ? (goal.y === 100 ? 97 : 3)
+          : this.clamp(point.y, 4, 96);
+        this.placePlayerForRestart(restarter, restartX, restartY);
+      }
+
+      if (reason === "free_kick" && !this.isDangerousFreeKick(team, point)) return;
+
+      if (goalkeeper) this.placePlayerForRestart(goalkeeper, 50, goal.y === 100 ? 97 : 3);
+
+      if (reason === "corner") {
+        const attackXs = [44, 55, 63, 36, 70, 50, 58, 42, 66, 30];
+        attackers.forEach((player, index) => {
+          this.placePlayerForRestart(player, attackXs[index % attackXs.length], goal.y - direction * (8 + Math.floor(index / 3) * 4));
+        });
+        const defenseXs = [48, 56, 40, 64, 34, 70, 52, 44, 60, 30];
+        defenders.forEach((player, index) => {
+          this.placePlayerForRestart(player, defenseXs[index % defenseXs.length], goal.y - direction * (6 + Math.floor(index / 3) * 4));
+        });
+        return;
+      }
+
+      if (reason === "free_kick") {
+        const wall = [...defenders].sort((a, b) => b.attributes.defense - a.attributes.defense).slice(0, 4);
+        const wallCenterX = point.x + (goal.x - point.x) * 0.35;
+        const wallY = point.y + direction * 8;
+        wall.forEach((player, index) => {
+          this.placePlayerForRestart(player, wallCenterX - 6 + index * 4, wallY);
+        });
+        defenders.filter((player) => !wall.includes(player)).forEach((player, index) => {
+          const lane = [-22, 22, -14, 14, -6, 6][index % 6];
+          this.placePlayerForRestart(player, this.clamp(50 + lane, 8, 92), goal.y - direction * (24 + Math.floor(index / 6) * 6));
+        });
+        attackers.forEach((player, index) => {
+          const lane = [-18, 18, -9, 9, -3, 3, -24, 24, -13, 13][index % 10];
+          this.placePlayerForRestart(player, this.clamp(50 + lane, 8, 92), goal.y - direction * (18 + Math.floor(index / 5) * 7));
+        });
+        return;
+      }
+
+      if (reason === "throw_in") {
+        const insideX = point.x < 50 ? 16 : 84;
+        attackers.forEach((player, index) => {
+          this.placePlayerForRestart(player, insideX + (index % 2 ? 9 : -4), point.y + direction * (-12 + index * 4));
+        });
+        defenders.forEach((player, index) => {
+          this.placePlayerForRestart(player, insideX + (index % 2 ? -5 : 7), point.y + direction * (-10 + index * 4));
+        });
+      }
+    }
+
+    shouldTakeDirectFreeKick(kicker, point) {
+      const team = this.getTeam(kicker.teamId);
+      const goal = this.getGoalPoint(team);
+      if (!this.isDangerousFreeKick(team, point)) return false;
+      const distance = this.distance(point, goal);
+      const anglePenalty = Math.abs(point.x - 50) / 50;
+      if (distance > 34 || anglePenalty > 0.58) return false;
+      return true;
+    }
+
+    takeFreeKick(kicker, point, direct = false) {
+      if (!kicker) return false;
+      this.emit("free_kick_taken", {
+        teamId: kicker.teamId,
+        playerId: kicker.id,
+        direct
+      });
+      if (direct) {
+        this.performShot(kicker, { freeKick: true, setPiece: "free_kick" });
+        return true;
+      }
+      this.setBallController(kicker);
+      return true;
+    }
+
     scheduleRestart(reason, team, point, delayMs = 600, eventData = {}) {
       if (reason === "throw_in") team.stats.throwIns += 1;
       if (reason === "corner") team.stats.corners += 1;
       if (reason === "goal_kick") team.stats.goalKicks += 1;
+      const dangerous = reason === "free_kick" && this.isDangerousFreeKick(team, point);
+      const selectable = reason === "penalty" || dangerous;
       Object.assign(this.ball, {
         mode: "out",
         x: point.x,
@@ -2521,19 +2724,25 @@
         restartTeamId: team.id,
         restartReason: reason,
         restartX: point.x,
-        restartY: point.y
+        restartY: point.y,
+        restartDangerous: dangerous,
+        restartSelectable: selectable
       });
       this.possession = null;
       this.restartRemainingMs = delayMs;
+      this.positionForRestart(reason, team, point, this.getRestartTaker(reason, team, point));
       this.emit(`${reason}_awarded`, {
         teamId: team.id,
         x: point.x,
         y: point.y,
+        dangerous,
+        selectable,
+        direct: dangerous,
         ...eventData
       });
     }
 
-    restartFromOut() {
+    restartFromOut(selectedPlayerId = null) {
       const team = this.getTeam(this.ball.restartTeamId) || this.teams[0];
       const restartReason = this.ball.restartReason;
       const restartPoint = {
@@ -2542,35 +2751,18 @@
       };
       const goalkeeper = team.players.find((player) => player.role === "GOL");
       if (restartReason === "penalty") {
-        const kicker = [...team.players]
-          .filter((player) => player.role !== "GOL")
-          .sort((a, b) =>
-            (b.attributes.technique * 0.65 + b.attributes.intelligence * 0.35) -
-            (a.attributes.technique * 0.65 + a.attributes.intelligence * 0.35)
-          )[0];
+        const kicker = this.getRestartTaker(restartReason, team, restartPoint, selectedPlayerId);
         this.takePenalty(kicker || team.players[0]);
         return;
       }
 
-      const outfieldRestarter = this.nearestPlayers(
-        team.players.filter((player) => player.role !== "GOL"),
-        restartPoint,
-        1
-      )[0];
       const restarter = ["offside", "throw_in", "corner", "free_kick"].includes(restartReason)
-        ? outfieldRestarter
-        : goalkeeper || outfieldRestarter || team.players[0];
-      if (["offside", "throw_in", "corner", "free_kick"].includes(restartReason) && restarter) {
-        const isTouchlineRestart = restartReason === "throw_in";
-        const isCorner = restartReason === "corner";
-        restarter.x = isTouchlineRestart
-          ? (restartPoint.x < 50 ? 4 : 96)
-          : this.clamp(restartPoint.x, isCorner ? 4 : 5, isCorner ? 96 : 95);
-        restarter.y = isCorner
-          ? (restartPoint.y < 50 ? 3 : 97)
-          : this.clamp(restartPoint.y, 4, 96);
-        restarter.targetX = restarter.x;
-        restarter.targetY = restarter.y;
+        ? this.getRestartTaker(restartReason, team, restartPoint, selectedPlayerId)
+        : this.getRestartTaker(restartReason, team, restartPoint, selectedPlayerId) || goalkeeper || team.players[0];
+      this.positionForRestart(restartReason, team, restartPoint, restarter);
+      if (restartReason === "free_kick" && restarter) {
+        this.takeFreeKick(restarter, restartPoint, this.shouldTakeDirectFreeKick(restarter, restartPoint));
+        return;
       }
       this.setBallController(restarter || goalkeeper || team.players[0]);
       this.emit("restart", {
