@@ -236,18 +236,27 @@ test("test penalty opens a sorted set-piece taker picker and pauses the match", 
   assert.equal(document.getElementById("set-piece-title").textContent, "Cobrador de penalti");
   assert.ok(document.getElementById("set-piece-list").children.length > 0);
 
+  game.setSpeed(10);
+  assert.equal(document.documentElement.style.values.get("--ball-move-ms"), "14ms");
+  assert.equal(document.documentElement.style.values.get("--player-move-ms"), "9ms");
+
   document.getElementById("set-piece-list").children[0].listeners.get("click")();
   assert.equal(document.getElementById("set-piece-modal").hidden, true);
   assert.equal(document.getElementById("restart-notice-modal").hidden, false);
+  assert.equal(document.getElementById("restart-notice-modal").dataset.noticeKind, "penalty");
   assert.equal(document.getElementById("restart-notice-title").textContent, "Penalti");
   assert.match(document.getElementById("restart-notice-detail").textContent, /respira/);
-  assert.equal(document.getElementById("restart-notice-modal").style.values.get("--notice-duration-ms"), "1200ms");
-  assert.equal(timeoutDelay, 1200);
+  assert.equal(document.getElementById("restart-notice-modal").style.values.get("--notice-duration-ms"), "2200ms");
+  assert.equal(document.documentElement.style.values.get("--ball-move-ms"), "140ms");
+  assert.equal(document.documentElement.style.values.get("--player-move-ms"), "90ms");
+  assert.equal(timeoutDelay, 2200);
   assert.equal(game.engine.getSnapshot().match.state, "paused");
   assert.equal(game.engine.getSnapshot().ball.restartReason, "penalty");
 
   timeoutCallback();
   assert.equal(document.getElementById("restart-notice-modal").hidden, true);
+  assert.equal(document.documentElement.style.values.get("--ball-move-ms"), "14ms");
+  assert.equal(document.documentElement.style.values.get("--player-move-ms"), "9ms");
   assert.notEqual(game.engine.getSnapshot().match.state, "paused");
 });
 

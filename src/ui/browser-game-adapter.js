@@ -29,6 +29,7 @@
       this.restartNoticeTimer = null;
       this.restartNoticeBlocking = false;
       this.restartNoticeReason = null;
+      this.forcedFieldAnimationRate = null;
       this.seed = options.seed ?? Date.now();
       this.lastPanelRenderAt = 0;
       this.lastRenderedState = null;
@@ -216,9 +217,18 @@
       , this.speedOptions[0]);
       this.speedSlider.value = String(this.speedOptions.indexOf(this.speed));
       this.speedValue.textContent = `${Number.isInteger(this.speed) ? `${this.speed}.0` : this.speed}x`;
-      const animationRate = Math.max(this.speed, 0.5);
+      this.applyFieldAnimationRate(this.forcedFieldAnimationRate ?? this.speed);
+    }
+
+    applyFieldAnimationRate(rate) {
+      const animationRate = Math.max(rate, 0.5);
       this.document.documentElement.style.setProperty("--ball-move-ms", `${Math.round(140 / animationRate)}ms`);
       this.document.documentElement.style.setProperty("--player-move-ms", `${Math.round(90 / animationRate)}ms`);
+    }
+
+    setForcedFieldAnimationRate(rate) {
+      this.forcedFieldAnimationRate = rate;
+      this.applyFieldAnimationRate(rate ?? this.speed);
     }
 
     consumeEvents(snapshot = this.engine.getSnapshot()) {
@@ -854,7 +864,9 @@
       this.restartNoticeTitle.textContent = "Penalti";
       this.restartNoticeDetail.textContent = `${selected?.name || "O cobrador"} respira, toma distancia e parte para a bola.`;
       this.restartNoticeModal.hidden = false;
-      this.restartNoticeModal.style.setProperty("--notice-duration-ms", "1200ms");
+      this.restartNoticeModal.dataset.noticeKind = "penalty";
+      this.restartNoticeModal.style.setProperty("--notice-duration-ms", "2200ms");
+      this.setForcedFieldAnimationRate(1);
       this.restartNoticeBlocking = true;
       this.restartNoticeReason = "penalty";
       this.positionRestartNotice();
@@ -865,6 +877,7 @@
         this.restartNoticeBlocking = false;
         this.restartNoticeReason = null;
         this.restartNoticeTimer = null;
+        this.setForcedFieldAnimationRate(null);
         const liveSnapshot = this.engine.getSnapshot();
         if (liveSnapshot.ball.mode === "out" && liveSnapshot.ball.restartReason === "penalty") {
           this.engine.command({ type: "takeRestart", playerId });
@@ -872,7 +885,7 @@
           this.consumeEvents(takenSnapshot);
           this.render(root.performance?.now?.() || Date.now(), takenSnapshot);
         }
-      }, 1200);
+      }, 2200);
       this.render(root.performance?.now?.() || Date.now(), snapshot);
     }
 
@@ -892,6 +905,7 @@
       this.restartNoticeTitle.textContent = copy.title;
       this.restartNoticeDetail.textContent = copy.detail;
       this.restartNoticeModal.hidden = false;
+      this.restartNoticeModal.dataset.noticeKind = "restart";
       this.restartNoticeModal.style.setProperty("--notice-duration-ms", "1000ms");
       this.restartNoticeBlocking = true;
       this.restartNoticeReason = event.type === "corner_awarded" ? "corner" : "offside";
