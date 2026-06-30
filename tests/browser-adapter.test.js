@@ -188,6 +188,8 @@ test("the browser adapter initializes the engine and mounts every player", () =>
 
 test("test penalty opens a sorted set-piece taker picker and pauses the match", () => {
   const document = new FakeDocument();
+  let timeoutCallback = null;
+  let timeoutDelay = null;
   const context = vm.createContext({
     console,
     document,
@@ -197,7 +199,11 @@ test("test penalty opens a sorted set-piece taker picker and pauses the match", 
     cancelAnimationFrame: () => {},
     addEventListener: () => {},
     clearTimeout,
-    setTimeout,
+    setTimeout: (callback, delay) => {
+      timeoutCallback = callback;
+      timeoutDelay = delay;
+      return 1;
+    },
     Blob,
     URL: {
       createObjectURL: () => "blob:test",
@@ -232,6 +238,16 @@ test("test penalty opens a sorted set-piece taker picker and pauses the match", 
 
   document.getElementById("set-piece-list").children[0].listeners.get("click")();
   assert.equal(document.getElementById("set-piece-modal").hidden, true);
+  assert.equal(document.getElementById("restart-notice-modal").hidden, false);
+  assert.equal(document.getElementById("restart-notice-title").textContent, "Penalti");
+  assert.match(document.getElementById("restart-notice-detail").textContent, /respira/);
+  assert.equal(document.getElementById("restart-notice-modal").style.values.get("--notice-duration-ms"), "1200ms");
+  assert.equal(timeoutDelay, 1200);
+  assert.equal(game.engine.getSnapshot().match.state, "paused");
+  assert.equal(game.engine.getSnapshot().ball.restartReason, "penalty");
+
+  timeoutCallback();
+  assert.equal(document.getElementById("restart-notice-modal").hidden, true);
   assert.notEqual(game.engine.getSnapshot().match.state, "paused");
 });
 

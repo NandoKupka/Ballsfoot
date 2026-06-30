@@ -834,10 +834,46 @@
     }
 
     selectSetPieceTaker(playerId) {
+      const snapshot = this.engine.getSnapshot();
+      if (snapshot.ball.restartReason === "penalty") {
+        this.setPieceModal.hidden = true;
+        this.openPenaltyDrama(playerId, snapshot);
+        return;
+      }
       this.setPieceModal.hidden = true;
       this.engine.command({ type: "takeRestart", playerId });
       this.consumeEvents();
       this.render(root.performance?.now?.() || Date.now(), this.engine.getSnapshot());
+    }
+
+    openPenaltyDrama(playerId, snapshot = this.engine.getSnapshot()) {
+      const team = snapshot.teams.find((candidate) => candidate.id === snapshot.ball.restartTeamId);
+      const selected = team?.players.find((player) => player.id === playerId) ||
+        (team ? this.getSetPieceCandidates(team, "penalty")[0] : null);
+      this.restartNoticeTeam.textContent = team?.shortName || "Penalti";
+      this.restartNoticeTitle.textContent = "Penalti";
+      this.restartNoticeDetail.textContent = `${selected?.name || "O cobrador"} respira, toma distancia e parte para a bola.`;
+      this.restartNoticeModal.hidden = false;
+      this.restartNoticeModal.style.setProperty("--notice-duration-ms", "1200ms");
+      this.restartNoticeBlocking = true;
+      this.restartNoticeReason = "penalty";
+      this.positionRestartNotice();
+
+      if (this.restartNoticeTimer) root.clearTimeout(this.restartNoticeTimer);
+      this.restartNoticeTimer = root.setTimeout(() => {
+        this.restartNoticeModal.hidden = true;
+        this.restartNoticeBlocking = false;
+        this.restartNoticeReason = null;
+        this.restartNoticeTimer = null;
+        const liveSnapshot = this.engine.getSnapshot();
+        if (liveSnapshot.ball.mode === "out" && liveSnapshot.ball.restartReason === "penalty") {
+          this.engine.command({ type: "takeRestart", playerId });
+          const takenSnapshot = this.engine.getSnapshot();
+          this.consumeEvents(takenSnapshot);
+          this.render(root.performance?.now?.() || Date.now(), takenSnapshot);
+        }
+      }, 1200);
+      this.render(root.performance?.now?.() || Date.now(), snapshot);
     }
 
     openRestartNotice(event, snapshot = this.engine.getSnapshot()) {
@@ -856,6 +892,7 @@
       this.restartNoticeTitle.textContent = copy.title;
       this.restartNoticeDetail.textContent = copy.detail;
       this.restartNoticeModal.hidden = false;
+      this.restartNoticeModal.style.setProperty("--notice-duration-ms", "1000ms");
       this.restartNoticeBlocking = true;
       this.restartNoticeReason = event.type === "corner_awarded" ? "corner" : "offside";
       this.positionRestartNotice();
