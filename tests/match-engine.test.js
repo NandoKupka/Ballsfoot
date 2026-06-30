@@ -188,7 +188,7 @@ test("the last touch at the end line distinguishes a corner from a goal kick", (
   assert.equal(goalKickEngine.ball.restartTeamId, goalKickDefendingTeam.id);
 });
 
-test("a throw-in restart returns controlled possession to a nearby outfield player", () => {
+test("a throw-in restart keeps shape and waits for the nearest player to run to the line", () => {
   const engine = new MatchEngine({
     teams: createTeams(),
     seed: 17,
@@ -196,15 +196,53 @@ test("a throw-in restart returns controlled possession to a nearby outfield play
     autonomous: false
   });
   const team = engine.teams[1];
+  const restarter = team.players.find((player) => player.role === "MC");
+  const teammate = team.players.find((player) => player.role === "ATA");
+  team.players
+    .filter((player) => player.role !== "GOL")
+    .forEach((player, index) => {
+      player.x = 48 + index * 2;
+      player.y = 36 + index * 3;
+      player.targetX = player.x;
+      player.targetY = player.y;
+      player.velocityX = 0;
+      player.velocityY = 0;
+    });
+  restarter.x = 88;
+  restarter.y = 62;
+  restarter.targetX = restarter.x;
+  restarter.targetY = restarter.y;
+  teammate.x = 54;
+  teammate.y = 44;
+  teammate.targetX = teammate.x;
+  teammate.targetY = teammate.y;
+
   engine.command({ type: "start" });
   engine.scheduleRestart("throw_in", team, { x: 99, y: 62 }, 50);
+
+  assert.equal(engine.ball.restartTakerId, restarter.id);
+  assert.equal(restarter.x, 88);
+  assert.equal(restarter.y, 62);
+  assert.equal(restarter.targetX, 96);
+  assert.equal(restarter.targetY, 62);
+  assert.equal(teammate.x, 54);
+  assert.equal(teammate.y, 44);
+
   engine.advance(50);
+  assert.equal(engine.ball.mode, "out");
+  assert.ok(restarter.x > 88);
+  assert.ok(restarter.x < 96);
+
+  for (let tick = 0; tick < 120 && engine.ball.mode === "out"; tick += 1) {
+    engine.advance(50);
+  }
 
   const controller = engine.getController();
   assert.equal(engine.ball.mode, "controlled");
   assert.equal(engine.possession.teamId, team.id);
   assert.notEqual(controller.role, "GOL");
-  assert.equal(controller.x, 96);
+  assert.equal(controller.id, restarter.id);
+  assert.ok(Math.abs(controller.x - 96) <= 0.8);
   assert.equal(team.stats.throwIns, 1);
 });
 
@@ -479,14 +517,83 @@ test("a goalkeeper parry over the end line awards a corner", () => {
   engine.performShot(shooter, { outcome: "parried" });
   engine.advance(5_000);
 
-  assert.equal(engine.ball.mode, "controlled");
-  assert.equal(engine.possession.teamId, shootingTeam.id);
   assert.equal(shootingTeam.stats.corners, 1);
   const events = engine.drainEvents();
   assert.ok(events.some((event) => event.type === "shot_parried"));
   assert.ok(events.some((event) => event.type === "corner_awarded"));
   assert.ok(!events.some((event) => event.type === "shot_saved"));
   assert.equal(defendingTeam.stats.goalKicks, 0);
+});
+
+test("a corner is crossed into the box and can become a first-time header", () => {
+  const engine = new MatchEngine({
+    teams: createTeams(),
+    seed: 32,
+    matchClockRate: 1,
+    autonomous: false
+  });
+  const team = engine.teams[0];
+  const receiver = team.players.find((player) => player.role === "ATA");
+  const marker = engine.getOpponent(team).players.find((player) => player.role === "ZAG");
+  receiver.x = 50;
+  receiver.y = 86;
+  marker.x = 64;
+  marker.y = 72;
+  engine.random.next = () => 0;
+
+  engine.scheduleRestart("corner", team, { x: 99, y: 99 }, 1);
+  engine.command({ type: "takeRestart" });
+
+  assert.equal(engine.ball.action, "corner_cross");
+  assert.equal(engine.ball.passTrigger, "corner");
+
+  for (let tick = 0; tick < 40 && engine.ball.action === "corner_cross"; tick += 1) {
+    engine.advance(50);
+  }
+
+  const events = engine.drainEvents();
+  const cross = events.find((event) => event.type === "corner_cross");
+  assert.ok(cross);
+  assert.ok(events.some((event) =>
+    event.type === "corner_header" &&
+    event.data.playerId === cross.data.receiverId
+  ));
+  assert.ok(events.some((event) =>
+    event.type === "shot_started" &&
+    event.data.playerId === cross.data.receiverId &&
+    event.data.setPiece === "corner" &&
+    event.data.header
+  ));
+});
+
+test("corner target marking reduces the header contact chance", () => {
+  const engine = new MatchEngine({
+    teams: createTeams(),
+    seed: 33,
+    matchClockRate: 1,
+    autonomous: false
+  });
+  const team = engine.teams[0];
+  const kicker = team.players.find((player) => player.role === "MD");
+  const receiver = team.players.find((player) => player.role === "ATA");
+  const marker = engine.getOpponent(team).players.find((player) => player.role === "ZAG");
+  receiver.x = 50;
+  receiver.y = 86;
+  receiver.pressure = 0.2;
+  marker.attributes.defense = 95;
+  marker.attributes.physical = 95;
+  marker.attributes.intelligence = 95;
+
+  marker.x = 51;
+  marker.y = 86;
+  const tightlyMarked = engine.getCornerHeaderChance(kicker, receiver, marker);
+
+  marker.x = 72;
+  marker.y = 70;
+  const looselyMarked = engine.getCornerHeaderChance(kicker, receiver, marker);
+
+  assert.ok(tightlyMarked < looselyMarked);
+  assert.ok(tightlyMarked <= 0.3);
 });
 
 test("overall is derived from the four attributes and players accumulate match statistics", () => {

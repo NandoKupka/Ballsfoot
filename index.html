@@ -785,7 +785,8 @@
     }
 
     .goal-modal,
-    .set-piece-modal {
+    .set-piece-modal,
+    .restart-notice-modal {
       position: fixed;
       left: var(--goal-modal-left, 50%);
       top: var(--goal-modal-top, 50%);
@@ -802,12 +803,14 @@
     }
 
     .goal-modal[hidden],
-    .set-piece-modal[hidden] {
+    .set-piece-modal[hidden],
+    .restart-notice-modal[hidden] {
       display: none;
     }
 
     .goal-dialog,
-    .set-piece-dialog {
+    .set-piece-dialog,
+    .restart-notice-dialog {
       width: min(330px, 100%);
       border: 1px solid rgba(255, 216, 79, 0.3);
       border-radius: var(--radius);
@@ -824,8 +827,23 @@
       text-align: left;
     }
 
+    .restart-notice-dialog {
+      width: min(320px, 100%);
+      text-align: center;
+      background: rgba(13, 20, 27, 0.96);
+      animation: notice-pop 1000ms ease both;
+    }
+
+    @keyframes notice-pop {
+      0% { opacity: 0; transform: translateY(8px) scale(0.98); }
+      14% { opacity: 1; transform: translateY(0) scale(1); }
+      78% { opacity: 1; transform: translateY(0) scale(1); }
+      100% { opacity: 0; transform: translateY(-4px) scale(0.99); }
+    }
+
     .goal-eyebrow,
-    .set-piece-eyebrow {
+    .set-piece-eyebrow,
+    .restart-notice-eyebrow {
       justify-self: center;
       border: 1px solid rgba(255, 255, 255, 0.12);
       border-radius: 999px;
@@ -839,7 +857,8 @@
     }
 
     .goal-dialog h2,
-    .set-piece-dialog h2 {
+    .set-piece-dialog h2,
+    .restart-notice-dialog h2 {
       margin: 0;
       color: var(--yellow);
       font-size: clamp(25px, 4vw, 34px);
@@ -848,7 +867,8 @@
     }
 
     .goal-dialog p,
-    .set-piece-dialog p {
+    .set-piece-dialog p,
+    .restart-notice-dialog p {
       margin: 0;
       color: var(--text);
       font-size: 13px;
@@ -1068,6 +1088,14 @@
       <p id="set-piece-detail"></p>
       <div class="set-piece-list" id="set-piece-list"></div>
       <button class="btn" id="set-piece-auto" type="button">Automatico</button>
+    </div>
+  </div>
+
+  <div class="restart-notice-modal" id="restart-notice-modal" hidden>
+    <div class="restart-notice-dialog" role="status" aria-live="polite">
+      <span class="restart-notice-eyebrow" id="restart-notice-team">Bola parada</span>
+      <h2 id="restart-notice-title">Escanteio</h2>
+      <p id="restart-notice-detail"></p>
     </div>
   </div>
 

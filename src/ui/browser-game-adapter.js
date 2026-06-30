@@ -26,6 +26,7 @@
       this.keyMomentEntries = [];
       this.matchSequence = 1;
       this.copyFeedbackTimer = null;
+      this.restartNoticeTimer = null;
       this.seed = options.seed ?? Date.now();
       this.lastPanelRenderAt = 0;
       this.lastRenderedState = null;
@@ -89,6 +90,10 @@
       this.setPieceDetail = byId("set-piece-detail");
       this.setPieceList = byId("set-piece-list");
       this.setPieceAutoButton = byId("set-piece-auto");
+      this.restartNoticeModal = byId("restart-notice-modal");
+      this.restartNoticeTeam = byId("restart-notice-team");
+      this.restartNoticeTitle = byId("restart-notice-title");
+      this.restartNoticeDetail = byId("restart-notice-detail");
     }
 
     renderTeamPanels() {
@@ -184,6 +189,7 @@
       root.addEventListener("resize", () => {
         this.positionGoalModal();
         this.positionSetPieceModal();
+        this.positionRestartNotice();
       });
     }
 
@@ -220,12 +226,17 @@
         if (entry) this.addLog(entry);
         if (event.type === "goal") this.openGoalModal(event, snapshot);
         if (this.isSelectableSetPieceEvent(event)) this.openSetPieceModal(event, snapshot);
+        if (this.isRestartNoticeEvent(event)) this.openRestartNotice(event, snapshot);
       });
     }
 
     isSelectableSetPieceEvent(event) {
       return event.type === "penalty_awarded" ||
         (event.type === "free_kick_awarded" && event.data.selectable);
+    }
+
+    isRestartNoticeEvent(event) {
+      return event.type === "corner_awarded" || event.type === "offside";
     }
 
     describeEvent(event, snapshot = this.engine.getSnapshot()) {
@@ -308,11 +319,23 @@
         },
         throw_in_awarded: {
           title: "Lateral",
-          detail: `${team?.shortName || "O time"} ganha a cobranca lateral.`
+          detail: `${team?.shortName || "O time"} ganha a cobranca lateral${event.data.count ? ` (${event.data.count} no jogo)` : ""}.`
         },
         corner_awarded: {
           title: "Escanteio",
           detail: `${team?.shortName || "O time"} ganha nova chance de ataque pela bola desviada na linha de fundo.`
+        },
+        corner_cross: {
+          title: "Cruzamento",
+          detail: `${player?.name || "Jogador"} cobra o escanteio buscando ${receiver?.name || "um companheiro"} na area.`
+        },
+        corner_header: {
+          title: "Cabeceio",
+          detail: `${player?.name || "Jogador"} ganha a disputa pelo alto e finaliza de primeira.`
+        },
+        corner_cleared: {
+          title: "Corte no escanteio",
+          detail: `${player?.name || "Defensor"} acompanha a marcacao e afasta o cruzamento.`
         },
         goal_kick_awarded: {
           title: "Tiro de meta",
@@ -341,10 +364,14 @@
           detail: `${player?.name || "Jogador"} avanca com a bola.`
         },
         shot_started: {
-          title: event.data.setPiece === "free_kick" ? "Falta direta" : "Finalizacao",
+          title: event.data.header
+            ? "Cabeceio"
+            : (event.data.setPiece === "free_kick" ? "Falta direta" : "Finalizacao"),
           detail: event.data.setPiece === "free_kick"
             ? `${player?.name || "Jogador"} cobra direto de ${Math.round(event.data.distance || 0)} unidades.`
-            : `${player?.name || "Jogador"} chuta de ${Math.round(event.data.distance || 0)} unidades.`
+            : (event.data.header
+              ? `${player?.name || "Jogador"} cabeceia apos o cruzamento.`
+              : `${player?.name || "Jogador"} chuta de ${Math.round(event.data.distance || 0)} unidades.`)
         },
         shot_saved: {
           title: "Defesa",
@@ -440,6 +467,7 @@
         "shot_saved",
         "shot_out",
         "foul_committed",
+        "throw_in_awarded",
         "corner_awarded",
         "penalty_awarded",
         "penalty_saved",
@@ -601,6 +629,10 @@
         {
           label: "Faltas",
           values: snapshot.teams.map((team) => String(team.stats.fouls))
+        },
+        {
+          label: "Laterais",
+          values: snapshot.teams.map((team) => String(team.stats.throwIns))
         },
         {
           label: "Escanteios",
@@ -806,6 +838,31 @@
       this.render(root.performance?.now?.() || Date.now(), this.engine.getSnapshot());
     }
 
+    openRestartNotice(event, snapshot = this.engine.getSnapshot()) {
+      const team = snapshot.teams.find((candidate) => candidate.id === event.data.teamId);
+      const copy = event.type === "corner_awarded"
+        ? {
+            title: "Escanteio",
+            detail: `${team?.shortName || "O time"} organiza a bola parada.`
+          }
+        : {
+            title: "Impedimento",
+            detail: "A defesa sobe e prepara a reposicao."
+          };
+
+      this.restartNoticeTeam.textContent = team?.shortName || "Bola parada";
+      this.restartNoticeTitle.textContent = copy.title;
+      this.restartNoticeDetail.textContent = copy.detail;
+      this.restartNoticeModal.hidden = false;
+      this.positionRestartNotice();
+
+      if (this.restartNoticeTimer) root.clearTimeout(this.restartNoticeTimer);
+      this.restartNoticeTimer = root.setTimeout(() => {
+        this.restartNoticeModal.hidden = true;
+        this.restartNoticeTimer = null;
+      }, 1000);
+    }
+
     openGoalModal(event, snapshot = this.engine.getSnapshot()) {
       const team = snapshot.teams.find((candidate) => candidate.id === event.data.teamId);
       const scorer = team?.players.find((player) => player.id === event.data.playerId);
@@ -833,6 +890,15 @@
       this.setPieceModal.style.setProperty("--goal-modal-top", `${rect.top + rect.height / 2}px`);
       this.setPieceModal.style.setProperty("--goal-modal-width", `${rect.width}px`);
       this.setPieceModal.style.setProperty("--goal-modal-height", `${rect.height}px`);
+    }
+
+    positionRestartNotice() {
+      if (!this.field || this.restartNoticeModal.hidden) return;
+      const rect = this.field.getBoundingClientRect();
+      this.restartNoticeModal.style.setProperty("--goal-modal-left", `${rect.left + rect.width / 2}px`);
+      this.restartNoticeModal.style.setProperty("--goal-modal-top", `${rect.top + rect.height / 2}px`);
+      this.restartNoticeModal.style.setProperty("--goal-modal-width", `${rect.width}px`);
+      this.restartNoticeModal.style.setProperty("--goal-modal-height", `${rect.height}px`);
     }
 
     formatEventClock(matchMs) {

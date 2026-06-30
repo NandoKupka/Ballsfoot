@@ -75,11 +75,13 @@ class FakeDocument {
       "test-throw-in", "test-corner", "test-penalty", "test-free-kick",
       "copy-feedback", "goal-modal", "goal-team", "goal-title", "goal-detail", "goal-ok",
       "set-piece-modal", "set-piece-team", "set-piece-title", "set-piece-detail",
-      "set-piece-list", "set-piece-auto"
+      "set-piece-list", "set-piece-auto", "restart-notice-modal", "restart-notice-team",
+      "restart-notice-title", "restart-notice-detail"
     ].forEach((id) => this.elements.set(id, new FakeElement()));
 
     this.elements.get("goal-modal").hidden = true;
     this.elements.get("set-piece-modal").hidden = true;
+    this.elements.get("restart-notice-modal").hidden = true;
     this.elements.get("speed-slider").value = "1";
   }
 
@@ -287,9 +289,67 @@ test("test buttons can stage non-selected restarts", () => {
   vm.runInContext(fs.readFileSync(path.join(root, "src", "ui", "browser-game-adapter.js"), "utf8"), context);
   document.listeners.get("DOMContentLoaded")();
 
+  document.getElementById("test-throw-in").listeners.get("click")();
+  assert.equal(context.tacticsGame.engine.getSnapshot().ball.restartReason, "throw_in");
+  assert.equal(document.getElementById("set-piece-modal").hidden, true);
+  assert.equal(document.getElementById("key-moments").children[0].children[1].children[0].textContent, "Lateral");
+  assert.match(document.getElementById("key-moments").children[0].children[1].children[1].textContent, /1 no jogo/);
+
   document.getElementById("test-corner").listeners.get("click")();
   assert.equal(context.tacticsGame.engine.getSnapshot().ball.restartReason, "corner");
   assert.equal(document.getElementById("set-piece-modal").hidden, true);
+});
+
+test("corner and offside show a one-second restart notice over the field", () => {
+  const document = new FakeDocument();
+  let timeoutCallback = null;
+  let timeoutDelay = null;
+  const context = vm.createContext({
+    console,
+    document,
+    navigator: { clipboard: { writeText: async () => {} } },
+    performance: { now: () => 0 },
+    requestAnimationFrame: () => 1,
+    cancelAnimationFrame: () => {},
+    addEventListener: () => {},
+    clearTimeout: () => {},
+    setTimeout: (callback, delay) => {
+      timeoutCallback = callback;
+      timeoutDelay = delay;
+      return 1;
+    },
+    Blob,
+    URL: {
+      createObjectURL: () => "blob:test",
+      revokeObjectURL: () => {}
+    }
+  });
+  context.globalThis = context;
+
+  const root = path.resolve(__dirname, "..");
+  vm.runInContext(fs.readFileSync(path.join(root, "src", "config", "teams.js"), "utf8"), context);
+  vm.runInContext(fs.readFileSync(path.join(root, "src", "domain", "match-engine.js"), "utf8"), context);
+  vm.runInContext(fs.readFileSync(path.join(root, "src", "ui", "browser-game-adapter.js"), "utf8"), context);
+  document.listeners.get("DOMContentLoaded")();
+
+  document.getElementById("test-corner").listeners.get("click")();
+
+  assert.equal(document.getElementById("restart-notice-modal").hidden, false);
+  assert.equal(document.getElementById("restart-notice-title").textContent, "Escanteio");
+  assert.equal(timeoutDelay, 1000);
+  assert.equal(document.getElementById("restart-notice-modal").style.values.get("--goal-modal-width"), "640px");
+  timeoutCallback();
+  assert.equal(document.getElementById("restart-notice-modal").hidden, true);
+
+  context.tacticsGame.openRestartNotice({
+    type: "offside",
+    matchMs: 0,
+    data: { teamId: context.tacticsGame.engine.getSnapshot().teams[1].id }
+  }, context.tacticsGame.engine.getSnapshot());
+
+  assert.equal(document.getElementById("restart-notice-modal").hidden, false);
+  assert.equal(document.getElementById("restart-notice-title").textContent, "Impedimento");
+  assert.equal(timeoutDelay, 1000);
 });
 
 test("hidden export logs accumulate while the visible match log resets", () => {
@@ -364,7 +424,7 @@ test("match data is rendered vertically with both teams compared per metric", ()
   assert.equal(stats.children[0].className, "match-stats-head");
   assert.deepEqual(
     Array.from(stats.children.slice(1), (row) => row.children[0].textContent),
-    ["Posse", "Passes", "Finalizacoes", "Faltas", "Escanteios"]
+    ["Posse", "Passes", "Finalizacoes", "Faltas", "Laterais", "Escanteios"]
   );
   stats.children.slice(1).forEach((row) => assert.equal(row.children.length, 3));
 });
@@ -399,11 +459,13 @@ test("visible event feed keeps only important events with newest first", () => {
   game.beginNewMatchLog();
   game.addLog({ kind: "pass_completed", title: "Passe", detail: "Evento comum" });
   game.addLog({ kind: "foul_committed", title: "Falta", detail: "Primeiro importante" });
+  game.addLog({ kind: "throw_in_awarded", title: "Lateral", detail: "Segundo importante" });
   game.addLog({ kind: "goal", title: "Gol", detail: "Mais recente" });
 
   const visible = document.getElementById("key-moments").children;
-  assert.equal(visible.length, 2);
+  assert.equal(visible.length, 3);
   assert.equal(visible[0].children[1].children[0].textContent, "Gol");
-  assert.equal(visible[1].children[1].children[0].textContent, "Falta");
-  assert.match(document.getElementById("log-count").textContent, /2 importantes/);
+  assert.equal(visible[1].children[1].children[0].textContent, "Lateral");
+  assert.equal(visible[2].children[1].children[0].textContent, "Falta");
+  assert.match(document.getElementById("log-count").textContent, /3 importantes/);
 });
