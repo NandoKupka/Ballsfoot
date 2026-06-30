@@ -378,12 +378,16 @@
         shot_started: {
           title: event.data.header
             ? "Cabeceio"
-            : (event.data.setPiece === "free_kick" ? "Falta direta" : "Finalizacao"),
-          detail: event.data.setPiece === "free_kick"
-            ? `${player?.name || "Jogador"} cobra direto de ${Math.round(event.data.distance || 0)} unidades.`
-            : (event.data.header
-              ? `${player?.name || "Jogador"} cabeceia apos o cruzamento.`
-              : `${player?.name || "Jogador"} chuta de ${Math.round(event.data.distance || 0)} unidades.`)
+            : (event.data.setPiece === "penalty"
+              ? "Penalti"
+              : (event.data.setPiece === "free_kick" ? "Falta direta" : "Finalizacao")),
+          detail: event.data.setPiece === "penalty"
+            ? `${player?.name || "Jogador"} cobra o penalti.`
+            : (event.data.setPiece === "free_kick"
+              ? `${player?.name || "Jogador"} cobra direto de ${Math.round(event.data.distance || 0)} unidades.`
+              : (event.data.header
+                ? `${player?.name || "Jogador"} cabeceia apos o cruzamento.`
+                : `${player?.name || "Jogador"} chuta de ${Math.round(event.data.distance || 0)} unidades.`))
         },
         shot_saved: {
           title: "Defesa",
@@ -421,7 +425,9 @@
         },
         penalty_saved: {
           title: "Penalti defendido",
-          detail: `${goalkeeper?.name || "O goleiro"} defende a cobranca de ${player?.name || "um atacante"} sem dar rebote.`
+          detail: event.data.held === false
+            ? `${goalkeeper?.name || "O goleiro"} espalma a cobranca de ${player?.name || "um atacante"} para escanteio.`
+            : `${goalkeeper?.name || "O goleiro"} defende a cobranca de ${player?.name || "um atacante"} sem dar rebote.`
         },
         penalty_missed: {
           title: "Penalti perdido",

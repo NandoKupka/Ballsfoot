@@ -480,6 +480,18 @@ test("a scored penalty records the shot and enters the normal goal pause", () =>
   engine.command({ type: "start" });
   engine.takePenalty(kicker, "goal");
 
+  assert.equal(engine.ball.mode, "travelling");
+  assert.equal(engine.ball.action, "shot");
+  assert.equal(engine.ball.setPiece, "penalty");
+  assert.ok(engine.drainEvents().some((event) =>
+    event.type === "shot_started" &&
+    event.data.setPiece === "penalty"
+  ));
+
+  for (let tick = 0; tick < 40 && engine.ball.mode === "travelling"; tick += 1) {
+    engine.advance(50);
+  }
+
   assert.equal(team.score, 1);
   assert.equal(team.stats.shots, 1);
   assert.equal(team.stats.goals, 1);
@@ -487,12 +499,11 @@ test("a scored penalty records the shot and enters the normal goal pause", () =>
   assert.equal(kicker.matchStats.goals, 1);
   assert.equal(engine.state, "goalPause");
   const events = engine.drainEvents();
-  assert.ok(events.some((event) => event.type === "penalty_taken"));
   assert.ok(events.some((event) => event.type === "penalty_scored"));
   assert.ok(events.some((event) => event.type === "goal" && event.data.penalty));
 });
 
-test("saved and missed penalties end without a rebound", () => {
+test("saved and missed penalties use the same shot resolution", () => {
   const savedEngine = new MatchEngine({
     teams: createTeams(),
     seed: 27,
@@ -505,9 +516,19 @@ test("saved and missed penalties end without a rebound", () => {
   savedEngine.command({ type: "start" });
   savedEngine.takePenalty(savedKicker, "saved");
 
+  assert.equal(savedEngine.ball.mode, "travelling");
+  assert.equal(savedEngine.ball.outcome, "saved");
+  for (let tick = 0; tick < 40 && savedEngine.ball.mode === "travelling"; tick += 1) {
+    savedEngine.advance(50);
+  }
+
   assert.equal(savedEngine.ball.mode, "controlled");
   assert.equal(savedEngine.ball.controllerId, goalkeeper.id);
   assert.equal(goalkeeper.matchStats.saves, 1);
+  assert.ok(savedEngine.drainEvents().some((event) =>
+    event.type === "penalty_saved" &&
+    event.data.held
+  ));
 
   const missedEngine = new MatchEngine({
     teams: createTeams(),
@@ -520,10 +541,85 @@ test("saved and missed penalties end without a rebound", () => {
   missedEngine.command({ type: "start" });
   missedEngine.takePenalty(missedKicker, "missed");
 
+  assert.equal(missedEngine.ball.mode, "travelling");
+  assert.equal(missedEngine.ball.outcome, "out");
+  for (let tick = 0; tick < 40 && missedEngine.ball.mode === "travelling"; tick += 1) {
+    missedEngine.advance(50);
+  }
+
   assert.equal(missedEngine.ball.mode, "out");
   assert.equal(missedEngine.ball.restartReason, "goal_kick");
   assert.equal(missedEngine.ball.restartTeamId, missedDefendingTeam.id);
-  assert.ok(missedEngine.drainEvents().some((event) => event.type === "penalty_missed"));
+  const missedEvents = missedEngine.drainEvents();
+  assert.ok(missedEvents.some((event) => event.type === "shot_out"));
+  assert.ok(missedEvents.some((event) => event.type === "penalty_missed"));
+});
+
+test("a parried penalty is a goalkeeper save that awards a corner", () => {
+  const engine = new MatchEngine({
+    teams: createTeams(),
+    seed: 28,
+    matchClockRate: 1,
+    autonomous: false
+  });
+  const kicker = engine.getController();
+  const shootingTeam = engine.getTeam(kicker.teamId);
+  const defendingTeam = engine.getOpponent(shootingTeam);
+  const goalkeeper = defendingTeam.players.find((player) => player.role === "GOL");
+
+  engine.command({ type: "start" });
+  engine.takePenalty(kicker, "parried");
+
+  assert.equal(engine.ball.mode, "travelling");
+  assert.equal(engine.ball.outcome, "parried");
+  for (let tick = 0; tick < 40 && engine.ball.mode === "travelling"; tick += 1) {
+    engine.advance(50);
+  }
+
+  assert.equal(engine.ball.mode, "out");
+  assert.equal(engine.ball.restartReason, "corner");
+  assert.equal(engine.ball.restartTeamId, shootingTeam.id);
+  assert.equal(goalkeeper.matchStats.saves, 1);
+  const events = engine.drainEvents();
+  assert.ok(events.some((event) =>
+    event.type === "penalty_saved" &&
+    event.data.held === false
+  ));
+  assert.ok(events.some((event) => event.type === "corner_awarded"));
+});
+
+test("shot model separates accuracy from goalkeeper resolution", () => {
+  const engine = new MatchEngine({
+    teams: createTeams(),
+    seed: 30,
+    matchClockRate: 1,
+    autonomous: false
+  });
+  const shooter = engine.getController();
+  const defendingTeam = engine.getOpponent(engine.getTeam(shooter.teamId));
+  const goalkeeper = defendingTeam.players.find((player) => player.role === "GOL");
+  shooter.x = 50;
+  shooter.y = 78;
+  shooter.pressure = 0.1;
+
+  shooter.attributes.technique = 95;
+  shooter.attributes.intelligence = 90;
+  const accurate = engine.getShotAccuracyChance(shooter, engine.distance(shooter, engine.getGoalPoint(engine.getTeam(shooter.teamId))), shooter.pressure, {});
+
+  shooter.attributes.technique = 35;
+  shooter.attributes.intelligence = 35;
+  const inaccurate = engine.getShotAccuracyChance(shooter, engine.distance(shooter, engine.getGoalPoint(engine.getTeam(shooter.teamId))), shooter.pressure, {});
+  assert.ok(accurate > inaccurate);
+
+  shooter.attributes.technique = 90;
+  shooter.attributes.intelligence = 90;
+  goalkeeper.attributes.defense = 95;
+  goalkeeper.attributes.intelligence = 90;
+  const strongKeeperChance = engine.getShotGoalChanceOnTarget(shooter, goalkeeper, 18, 0.1, {});
+  goalkeeper.attributes.defense = 30;
+  goalkeeper.attributes.intelligence = 30;
+  const weakKeeperChance = engine.getShotGoalChanceOnTarget(shooter, goalkeeper, 18, 0.1, {});
+  assert.ok(weakKeeperChance > strongKeeperChance);
 });
 
 test("a goalkeeper parry over the end line awards a corner", () => {
