@@ -312,6 +312,7 @@
             spaceScore: 0,
             movementPhase: this.random.next() * Math.PI * 2,
             roamingBias: this.random.next() * 2 - 1,
+            carryBurstUntilMs: 0,
             nextTargetReviewMs: 0,
             nextTackleAttemptMs: 0
           };
@@ -431,6 +432,7 @@
           player.velocityX = 0;
           player.velocityY = 0;
           player.movementMode = "walk";
+          player.carryBurstUntilMs = 0;
         });
       });
 
@@ -563,6 +565,7 @@
           player.stamina = 100;
           player.sprintStamina = 100;
           player.movementMode = "walk";
+          player.carryBurstUntilMs = 0;
         });
       });
       this.lastControlledTeamId = null;
@@ -578,6 +581,8 @@
 
       const distance = this.distance(passer, receiver);
       const passingTeam = this.getTeam(passer.teamId);
+      const progress = this.getAttackProgress(receiver, passingTeam) - this.getAttackProgress(passer, passingTeam);
+      const backward = progress < -4;
       passingTeam.stats.passesAttempted += 1;
       passer.matchStats.passesAttempted += 1;
       if (options.oneTouch) {
@@ -595,6 +600,8 @@
           playerId: passer.id,
           receiverId: receiver.id,
           distance,
+          progress,
+          backward,
           oneTouch: Boolean(options.oneTouch),
           combination: Boolean(options.combination),
           trigger: options.trigger || null,
@@ -650,6 +657,8 @@
         playerId: passer.id,
         receiverId: receiver.id,
         distance,
+        progress,
+        backward,
         oneTouch: Boolean(options.oneTouch),
         combination: Boolean(options.combination),
         trigger: options.trigger || null,
@@ -1195,7 +1204,8 @@
             player.markingTargetId = null;
             const goal = this.getGoalPoint(team);
             const towardGoal = this.normalized(player, goal);
-            const carry = this.getCarrierCarryDistance(player);
+            const burstMultiplier = (player.carryBurstUntilMs || 0) > this.simulationElapsedMs ? 1.45 : 1;
+            const carry = this.getCarrierCarryDistance(player) * burstMultiplier;
             player.targetX = this.clamp(player.x + towardGoal.x * carry, 5, 95);
             player.targetY = this.clamp(player.y + towardGoal.y * carry, 5, 95);
             return;
@@ -2044,14 +2054,14 @@
         1
       );
       const attemptChance = this.clamp(
-        0.02 +
-          technique * 0.14 +
-          intelligenceReadiness * 0.24 +
-          pressureUrgency * 0.16 +
-          (best.exceptional ? 0.08 : 0) +
-          (best.combination ? 0.05 : 0),
+        0.018 +
+          technique * 0.12 +
+          intelligenceReadiness * 0.22 +
+          pressureUrgency * 0.14 +
+          (best.exceptional ? 0.06 : 0) +
+          (best.combination ? 0.04 : 0),
         0.05,
-        0.58
+        0.52
       );
       if (this.random.next() > attemptChance) return null;
 
@@ -2068,28 +2078,218 @@
       };
     }
 
+    getMaximumShotDistance(player) {
+      if (this.isForward(player)) return 38;
+      if (["MC", "ME", "MD"].includes(player.role)) return 30;
+      return 0;
+    }
+
+    getShotDecisionChance(carrier, goalDistance = this.distance(carrier, this.getGoalPoint(this.getTeam(carrier.teamId)))) {
+      const maximumShotDistance = this.getMaximumShotDistance(carrier);
+      if (!maximumShotDistance || goalDistance >= maximumShotDistance) return 0;
+
+      const shootingDecision = (
+        carrier.attributes.technique * 0.45 +
+        carrier.attributes.intelligence * 0.55
+      ) / 100;
+      const distanceRamp = Math.pow(
+        this.clamp((maximumShotDistance - goalDistance) / maximumShotDistance, 0, 1),
+        1.35
+      );
+      const boxRamp = this.clamp((24 - goalDistance) / 18, 0, 1);
+      const closeRamp = this.clamp((16 - goalDistance) / 10, 0, 1);
+      const spaceCarryPenalty = goalDistance > 22 && goalDistance < 36 && carrier.spaceScore >= 0.52
+        ? 0.72
+        : 1;
+      const farPenalty = goalDistance > 28 ? 0.38 : (goalDistance > 23 ? 0.72 : 1);
+      const baseChance =
+        0.03 +
+        distanceRamp * 0.22 +
+        boxRamp * 0.22 +
+        closeRamp * 0.16 +
+        (1 - carrier.pressure) * 0.04;
+      return this.clamp(
+        baseChance * (0.55 + shootingDecision * 0.55) * spaceCarryPenalty * farPenalty,
+        0.01,
+        closeRamp > 0 ? 0.68 : 0.42
+      );
+    }
+
+    getCarryChance(carrier, goalDistance = this.distance(carrier, this.getGoalPoint(this.getTeam(carrier.teamId)))) {
+      if (carrier.role === "GOL") return 0;
+      const individualQuality = (
+        carrier.attributes.technique * 0.45 +
+        carrier.attributes.physical * 0.35 +
+        carrier.attributes.intelligence * 0.2
+      ) / 100;
+      const finalThirdLane = goalDistance > 16 && goalDistance < 54
+        ? this.clamp((54 - goalDistance) / 38, 0, 1)
+        : 0;
+      const openSpace = this.clamp((carrier.spaceScore - 0.34) / 0.66, 0, 1);
+      const patienceToReachArea = goalDistance > 22 && goalDistance < 39 ? 0.16 : 0;
+      return this.clamp(
+        0.1 +
+          carrier.spaceScore * 0.22 +
+          (1 - carrier.pressure) * 0.08 +
+          finalThirdLane * 0.24 +
+          openSpace * individualQuality * 0.2 +
+          patienceToReachArea +
+          (individualQuality - 0.72) * 0.28 -
+          carrier.pressure * 0.2,
+        0.04,
+        0.86
+      );
+    }
+
+    getDribbleDefender(carrier) {
+      if (!carrier || carrier.role === "GOL" || this.ball.controllerId !== carrier.id) return null;
+      const team = this.getTeam(carrier.teamId);
+      const goal = this.getGoalPoint(team);
+      const towardGoal = this.normalized(carrier, goal);
+      const laneEnd = {
+        x: carrier.x + towardGoal.x * 9,
+        y: carrier.y + towardGoal.y * 9
+      };
+      return this.nearestPlayers(
+        this.getOpponent(team).players
+          .filter((player) => player.role !== "GOL")
+          .filter((player) => this.distance(player, carrier) <= 5.2)
+          .filter((player) => this.distanceToSegment(player, carrier, laneEnd) <= 2.8),
+        carrier,
+        1
+      )[0] || null;
+    }
+
+    getDribbleChance(carrier, defender) {
+      if (!carrier || !defender) return 0;
+      const carrierQuality = (
+        carrier.attributes.technique * 0.58 +
+        carrier.attributes.physical * 0.24 +
+        carrier.attributes.intelligence * 0.18
+      ) / 100;
+      const defenderQuality = (
+        defender.attributes.defense * 0.62 +
+        defender.attributes.physical * 0.24 +
+        defender.attributes.intelligence * 0.14
+      ) / 100;
+      return this.clamp(
+        0.22 +
+          (carrierQuality - defenderQuality) * 0.72 +
+          carrier.attributes.technique / 580 +
+          carrier.spaceScore * 0.12 -
+          carrier.pressure * 0.12,
+        0.1,
+        0.78
+      );
+    }
+
+    getDribbleIntentChance(carrier, defender, goalDistance) {
+      if (!defender) return 0;
+      const dribbleChance = this.getDribbleChance(carrier, defender);
+      const attackingZone = this.clamp((58 - goalDistance) / 42, 0, 1);
+      const spaceBehind = this.clamp((carrier.spaceScore - 0.25) / 0.75, 0, 1);
+      const techniqueBias = this.clamp((carrier.attributes.technique - 58) / 38, 0, 1);
+      return this.clamp(
+        0.02 +
+          dribbleChance * 0.24 +
+          attackingZone * 0.1 +
+          spaceBehind * 0.08 +
+          techniqueBias * 0.16 -
+          carrier.pressure * 0.1,
+        0.02,
+        0.42
+      );
+    }
+
+    attemptDribble(carrier, defender = this.getDribbleDefender(carrier)) {
+      if (!carrier || !defender || this.ball.controllerId !== carrier.id) return false;
+      const chance = this.getDribbleChance(carrier, defender);
+      if (this.random.next() > chance) {
+        this.emit("dribble_failed", {
+          teamId: carrier.teamId,
+          playerId: carrier.id,
+          defenderId: defender.id,
+          chance
+        });
+        return this.resolveTackle(defender, carrier, "won");
+      }
+
+      const team = this.getTeam(carrier.teamId);
+      const oldPosition = { x: carrier.x, y: carrier.y };
+      const towardGoal = this.normalized(carrier, this.getGoalPoint(team));
+      const side = Math.sign(carrier.x - defender.x) || (carrier.x < 50 ? -1 : 1);
+      const burstDistance = this.clamp(
+        6.5 +
+          carrier.attributes.technique / 42 +
+          carrier.attributes.physical / 45 +
+          carrier.spaceScore * 2.4,
+        7.5,
+        13.5
+      );
+      carrier.targetX = this.clamp(
+        carrier.x + towardGoal.x * burstDistance + side * this.clamp(1.8 - carrier.pressure, 0.6, 1.8),
+        5,
+        95
+      );
+      carrier.targetY = this.clamp(carrier.y + towardGoal.y * burstDistance, 5, 95);
+      carrier.carryBurstUntilMs = this.simulationElapsedMs + 950;
+      carrier.matchStats.carries += 1;
+      this.emit("dribble", {
+        teamId: team.id,
+        playerId: carrier.id,
+        defenderId: defender.id,
+        chance,
+        from: oldPosition,
+        to: { x: carrier.targetX, y: carrier.targetY }
+      });
+      this.decisionRemainingMs = this.getDecisionDelay(carrier) * 0.62;
+      return true;
+    }
+
+    performCarry(carrier, options = {}) {
+      if (!carrier || this.ball.controllerId !== carrier.id) return false;
+      const team = this.getTeam(carrier.teamId);
+      const goalDistance = options.goalDistance ?? this.distance(carrier, this.getGoalPoint(team));
+      const oldPosition = { x: carrier.x, y: carrier.y };
+      const goal = this.getGoalPoint(team);
+      const towardGoal = this.normalized(carrier, goal);
+      const individualQuality = (
+        carrier.attributes.technique * 0.45 +
+        carrier.attributes.physical * 0.4 +
+        carrier.attributes.intelligence * 0.15
+      ) / 100;
+      const burst = options.burst ?? (
+        goalDistance > 18 &&
+        goalDistance < 62 &&
+        carrier.spaceScore >= 0.52 &&
+        carrier.pressure <= 0.58 &&
+        individualQuality >= 0.62
+      );
+      const carryDistance = this.getCarrierCarryDistance(carrier) *
+        (burst ? 1.55 : 1) *
+        (1 + this.clamp(carrier.spaceScore - 0.45, 0, 0.45) * 0.45);
+      carrier.targetX = this.clamp(carrier.x + towardGoal.x * carryDistance, 5, 95);
+      carrier.targetY = this.clamp(carrier.y + towardGoal.y * carryDistance, 5, 95);
+      if (burst) carrier.carryBurstUntilMs = this.simulationElapsedMs + 850;
+      carrier.matchStats.carries += 1;
+      this.emit("carry", {
+        teamId: team.id,
+        playerId: carrier.id,
+        from: oldPosition,
+        to: { x: carrier.targetX, y: carrier.targetY },
+        burst
+      });
+      this.decisionRemainingMs = this.getDecisionDelay(carrier) * (burst ? 0.68 : 0.82);
+      return true;
+    }
+
     decideAction() {
       const carrier = this.getController();
       if (!carrier) return;
 
       const team = this.getTeam(carrier.teamId);
       const goalDistance = this.distance(carrier, this.getGoalPoint(team));
-      const maximumShotDistance = this.isForward(carrier)
-        ? 40
-        : (["MC", "ME", "MD"].includes(carrier.role) ? 33 : 0);
-      const shotCloseness = maximumShotDistance
-        ? this.clamp((maximumShotDistance - goalDistance) / maximumShotDistance, 0, 1)
-        : 0;
-      let shotChance = maximumShotDistance && goalDistance < maximumShotDistance
-        ? this.clamp(0.12 + shotCloseness * 0.28 + (1 - carrier.pressure) * 0.05, 0.06, 0.46)
-        : 0;
-      const shootingDecision = (
-        carrier.attributes.technique * 0.45 +
-        carrier.attributes.intelligence * 0.55
-      ) / 100;
-      shotChance *= 0.65 + shootingDecision * 0.45;
-      if (goalDistance < 24 && maximumShotDistance) shotChance = Math.max(shotChance, 0.32);
-      if (goalDistance > 30) shotChance *= 0.3;
+      const shotChance = this.getShotDecisionChance(carrier, goalDistance);
 
       if (shotChance && goalDistance < 18 && this.attemptLastDitchChallenge(carrier)) {
         return;
@@ -2100,43 +2300,24 @@
         return;
       }
 
-      const passTarget = this.choosePassTarget(carrier);
-      const finalThirdCarryBoost = (
-        (this.isForward(carrier) || ["MC", "ME", "MD"].includes(carrier.role)) &&
-        goalDistance < 48 &&
-        goalDistance > 19 &&
-        carrier.pressure < 0.7
-      ) ? 0.38 : 0;
-      const carryChance = carrier.role === "GOL"
-        ? 0
-        : this.clamp(
-            0.12 +
-              carrier.spaceScore * 0.2 -
-              carrier.pressure * 0.22 +
-              finalThirdCarryBoost +
-              (carrier.attributes.technique + carrier.attributes.physical - 160) / 300,
-            0.04,
-            0.72
-          );
+      const dribbleDefender = this.getDribbleDefender(carrier);
+      if (
+        dribbleDefender &&
+        this.random.next() < this.getDribbleIntentChance(carrier, dribbleDefender, goalDistance) &&
+        this.attemptDribble(carrier, dribbleDefender)
+      ) {
+        return;
+      }
 
-      if (passTarget && (carrier.pressure > 0.58 || this.random.next() > carryChance)) {
+      const passTarget = this.choosePassTarget(carrier);
+      const carryChance = this.getCarryChance(carrier, goalDistance);
+
+      if (passTarget && (carrier.pressure > 0.68 || this.random.next() > carryChance)) {
         this.performPass(passTarget.id);
         return;
       }
 
-      const oldPosition = { x: carrier.x, y: carrier.y };
-      const goal = this.getGoalPoint(team);
-      const towardGoal = this.normalized(carrier, goal);
-      carrier.targetX = this.clamp(carrier.x + towardGoal.x * this.getCarrierCarryDistance(carrier), 5, 95);
-      carrier.targetY = this.clamp(carrier.y + towardGoal.y * this.getCarrierCarryDistance(carrier), 5, 95);
-      carrier.matchStats.carries += 1;
-      this.emit("carry", {
-        teamId: team.id,
-        playerId: carrier.id,
-        from: oldPosition,
-        to: { x: carrier.targetX, y: carrier.targetY }
-      });
-      this.decisionRemainingMs = this.getDecisionDelay(carrier) * 0.82;
+      this.performCarry(carrier, { goalDistance });
     }
 
     choosePassTarget(passer) {
@@ -2160,9 +2341,9 @@
           const distanceFit = distance < 8
             ? 0.72
             : (distance < 20 ? 1.35 : (distance < 28 ? 1.08 : (distance < 36 ? 0.48 : 0.18)));
-          const progressBias = progress < -10 ? 0.38 : (progress < 4 ? 0.94 : (progress < 18 ? 1.3 : 1.38));
+          const progressBias = progress < -10 ? 0.22 : (progress < -4 ? 0.46 : (progress < 4 ? 0.94 : (progress < 18 ? 1.3 : 1.38)));
           const backwardReleaseBias = progress < -4
-            ? this.clamp(0.18 + passer.pressure * 1.25, 0.18, 1.18)
+            ? this.clamp(0.05 + Math.max(0, passer.pressure - 0.5) * 1.25, 0.05, 0.58)
             : 1;
           const pressureBias = Math.max(0.22, 1 - player.pressure * 0.72);
           let roleBias = this.isForward(player) ? 1.2 : (player.role === "MC" || player.role === "VOL" ? 1.16 : 1);
@@ -2274,8 +2455,8 @@
       if (setPiece === "penalty") {
         return this.clamp(0.76 + quality * 0.18, 0.72, 0.96);
       }
-      const distanceScore = 1 - this.clamp(distance / 52, 0, 1);
-      let chance = 0.2 + quality * 0.5 + distanceScore * 0.26 - pressure * 0.2;
+      const distanceScore = 1 - this.clamp(distance / 50, 0, 1);
+      let chance = 0.18 + quality * 0.45 + Math.pow(distanceScore, 0.85) * 0.34 - pressure * 0.18;
       if (setPiece === "free_kick") chance += 0.08 + quality * 0.05;
       if (options.header) chance -= 0.14;
       return this.clamp(chance, options.header ? 0.16 : 0.18, setPiece === "free_kick" ? 0.82 : 0.88);
@@ -2289,7 +2470,7 @@
         return this.clamp(0.62 + shotQuality * 0.2 - goalkeeperQuality * 0.22, 0.5, 0.84);
       }
       const distanceScore = 1 - this.clamp(distance / 46, 0, 1);
-      let chance = 0.12 + shotQuality * 0.46 + distanceScore * 0.28 - goalkeeperQuality * 0.32 - pressure * 0.1;
+      let chance = 0.1 + shotQuality * 0.44 + Math.pow(distanceScore, 0.8) * 0.46 - goalkeeperQuality * 0.32 - pressure * 0.1;
       if (setPiece === "free_kick") chance += 0.04 + shotQuality * 0.04;
       if (options.header) chance -= 0.08;
       return this.clamp(chance, 0.04, options.header ? 0.3 : 0.74);
@@ -3329,6 +3510,7 @@
 
     isRunUrgent(player, team, distance, controller) {
       if (distance < 4.5) return false;
+      if (player === controller && (player.carryBurstUntilMs || 0) > this.simulationElapsedMs) return true;
       if (player === controller && player.pressure > 0.5) return true;
       if (player.id === team.tacticalState.pressingPlayerId) return true;
       if (team.tacticalState.transition === "counter" &&

@@ -259,6 +259,7 @@
       const receiver = findPlayer(event.data.receiverId);
       const fouledPlayer = findPlayer(event.data.fouledPlayerId);
       const goalkeeper = findPlayer(event.data.goalkeeperId);
+      const defender = findPlayer(event.data.defenderId);
       const base = {
         time: this.formatEventClock(event.matchMs),
         type: team?.id || "system",
@@ -372,8 +373,18 @@
           detail: `${player?.name || "Jogador"} nao consegue controlar e a bola fica solta.`
         },
         carry: {
-          title: "Conducao",
-          detail: `${player?.name || "Jogador"} avanca com a bola.`
+          title: event.data.burst ? "Arrancada" : "Conducao",
+          detail: event.data.burst
+            ? `${player?.name || "Jogador"} acelera em campo aberto.`
+            : `${player?.name || "Jogador"} avanca com a bola.`
+        },
+        dribble: {
+          title: "Drible",
+          detail: `${player?.name || "Jogador"} passa por ${defender?.name || "um marcador"} na conducao.`
+        },
+        dribble_failed: {
+          title: "Drible travado",
+          detail: `${defender?.name || "Defensor"} fecha o espaco contra ${player?.name || "o condutor"}.`
         },
         shot_started: {
           title: event.data.header

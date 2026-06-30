@@ -667,6 +667,36 @@ test("shot model separates accuracy from goalkeeper resolution", () => {
   assert.ok(weakKeeperChance > strongKeeperChance);
 });
 
+test("shot danger and shot decision rise sharply closer to goal", () => {
+  const engine = new MatchEngine({
+    teams: createTeams(),
+    seed: 30,
+    matchClockRate: 1,
+    autonomous: false
+  });
+  const shooter = engine.getController();
+  const team = engine.getTeam(shooter.teamId);
+  const goalkeeper = engine.getOpponent(team).players.find((player) => player.role === "GOL");
+  shooter.role = "ATA";
+  shooter.attributes.technique = 88;
+  shooter.attributes.intelligence = 84;
+  shooter.pressure = 0.12;
+
+  const farDistance = 31;
+  const closeDistance = 13;
+  const farAccuracy = engine.getShotAccuracyChance(shooter, farDistance, shooter.pressure, {});
+  const closeAccuracy = engine.getShotAccuracyChance(shooter, closeDistance, shooter.pressure, {});
+  const farGoal = engine.getShotGoalChanceOnTarget(shooter, goalkeeper, farDistance, shooter.pressure, {});
+  const closeGoal = engine.getShotGoalChanceOnTarget(shooter, goalkeeper, closeDistance, shooter.pressure, {});
+  const farDecision = engine.getShotDecisionChance(shooter, farDistance);
+  const closeDecision = engine.getShotDecisionChance(shooter, closeDistance);
+
+  assert.ok(closeAccuracy > farAccuracy + 0.1);
+  assert.ok(closeGoal > farGoal + 0.16);
+  assert.ok(farDecision < 0.2);
+  assert.ok(closeDecision > farDecision * 2.4);
+});
+
 test("a goalkeeper parry over the end line awards a corner", () => {
   const engine = new MatchEngine({
     teams: createTeams(),
@@ -1017,6 +1047,50 @@ test("high pressure can trigger a first-time return pass for a wall pass", () =>
     distance: 14,
     oneTouchChain: 1
   }), null);
+});
+
+test("technical carriers can dribble through weaker defenders", () => {
+  const engine = new MatchEngine({
+    teams: createTeams(),
+    seed: 40,
+    matchClockRate: 1,
+    autonomous: false
+  });
+  const team = engine.teams[0];
+  const carrier = team.players.find((player) => player.role === "ATA");
+  const defender = engine.getOpponent(team).players.find((player) => player.role === "ZAG");
+  carrier.x = 50;
+  carrier.y = 36;
+  carrier.targetX = carrier.x;
+  carrier.targetY = carrier.y;
+  carrier.pressure = 0.34;
+  carrier.spaceScore = 0.72;
+  carrier.attributes.technique = 96;
+  carrier.attributes.physical = 88;
+  carrier.attributes.intelligence = 82;
+  defender.x = 50;
+  defender.y = 33;
+  defender.attributes.defense = 34;
+  defender.attributes.physical = 58;
+  defender.attributes.intelligence = 54;
+  engine.setBallController(carrier);
+
+  const weakDefenderChance = engine.getDribbleChance(carrier, defender);
+  defender.attributes.defense = 96;
+  const strongDefenderChance = engine.getDribbleChance(carrier, defender);
+  assert.ok(weakDefenderChance > strongDefenderChance + 0.24);
+
+  defender.attributes.defense = 34;
+  engine.random.next = () => 0;
+  const beforeGoalDistance = engine.distance(carrier, engine.getGoalPoint(team));
+  assert.equal(engine.attemptDribble(carrier), true);
+  assert.equal(engine.ball.controllerId, carrier.id);
+  assert.ok(engine.distance({ x: carrier.targetX, y: carrier.targetY }, engine.getGoalPoint(team)) < beforeGoalDistance - 4);
+  assert.ok(carrier.targetY < defender.y);
+  assert.ok(engine.drainEvents().some((event) =>
+    event.type === "dribble" &&
+    event.data.defenderId === defender.id
+  ));
 });
 
 test("a first-time pass continues the sequence without a control delay", () => {
@@ -1430,15 +1504,22 @@ test("backward pass weight rises when the passer is under pressure", () => {
     };
     engine.choosePassTarget(passer);
 
-    return candidates.find((candidate) => candidate.player === backwardReceiver).weight;
+    return {
+      backward: candidates.find((candidate) => candidate.player === backwardReceiver).weight,
+      forward: candidates.find((candidate) => candidate.player === forwardReceiver).weight
+    };
   };
 
-  const lowPressureWeight = weightedBackwardPass(0.12);
-  const highPressureWeight = weightedBackwardPass(0.82);
+  const lowPressure = weightedBackwardPass(0.12);
+  const highPressure = weightedBackwardPass(0.82);
 
   assert.ok(
-    lowPressureWeight < highPressureWeight / 3,
-    `low=${lowPressureWeight}, high=${highPressureWeight}`
+    lowPressure.backward < lowPressure.forward * 0.45,
+    `low backward=${lowPressure.backward}, forward=${lowPressure.forward}`
+  );
+  assert.ok(
+    lowPressure.backward < highPressure.backward / 2,
+    `low=${lowPressure.backward}, high=${highPressure.backward}`
   );
 });
 
