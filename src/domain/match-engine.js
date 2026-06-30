@@ -26,6 +26,7 @@
   } = formations || {};
   const DEFAULT_FIXED_STEP_MS = 50;
   const DEFAULT_MATCH_CLOCK_RATE = 120;
+  const GOAL_KICK_RESTART_DELAY_MS = 2_400;
   const HALF_DURATION_MS = 45 * 60 * 1000;
   const PENALTY_AREA = {
     xMin: 25.5,
@@ -1153,6 +1154,12 @@
         team.players.forEach((player) => {
           if (player.role === "GOL") {
             player.markingTargetId = null;
+            if (this.isGoalKickRestarter(player)) {
+              const target = this.getGoalKickRestarterTarget(this.ball);
+              player.targetX = target.x;
+              player.targetY = target.y;
+              return;
+            }
             const goalkeeperTarget = this.getGoalkeeperTarget(
               player,
               team,
@@ -1161,6 +1168,14 @@
             );
             player.targetX = goalkeeperTarget.x;
             player.targetY = goalkeeperTarget.y;
+            return;
+          }
+
+          const goalKickTarget = this.getGoalKickOutfielderTarget(player, team);
+          if (goalKickTarget) {
+            player.markingTargetId = null;
+            player.targetX = goalKickTarget.x;
+            player.targetY = goalKickTarget.y;
             return;
           }
 
@@ -1660,14 +1675,17 @@
         team.players.forEach((player) => {
           const distance = Math.hypot(player.targetX - player.x, player.targetY - player.y);
           const throwInRestarter = this.isThrowInRestarter(player);
-          const movementMode = throwInRestarter
+          const goalKickRestarter = this.isGoalKickRestarter(player);
+          const deadBallRestarter = throwInRestarter || goalKickRestarter;
+          const movementMode = deadBallRestarter
             ? "run"
             : this.getMovementMode(player, team, distance, controller);
           const movementProfile = this.getPlayerMovementProfile(player);
           const modeProfile = MOVEMENT_MODES[movementMode];
           player.movementMode = movementMode;
-          if (!throwInRestarter) this.updatePlayerStamina(player, movementMode, seconds);
-          const baseSpeed = movementProfile[movementMode] * (throwInRestarter ? 2.35 : 1);
+          if (!deadBallRestarter) this.updatePlayerStamina(player, movementMode, seconds);
+          const restartSpeedBoost = throwInRestarter ? 2.35 : (goalKickRestarter ? 1.9 : 1);
+          const baseSpeed = movementProfile[movementMode] * restartSpeedBoost;
           const pressurePenalty = player === controller && player.pressure > 0.55 ? 0.82 : 1;
           const arrivalFactor = this.clamp(distance / 4.5, 0.12, 1);
           const desiredSpeed = baseSpeed * pressurePenalty * arrivalFactor;
@@ -1681,7 +1699,7 @@
           const acceleration = (this.isForward(player) || this.isWide(player) ? 20 : 17) *
             accelerationFactor *
             modeProfile.accelerationRatio *
-            (throwInRestarter ? 2.6 : 1) *
+            (throwInRestarter ? 2.6 : (goalKickRestarter ? 2.1 : 1)) *
             seconds;
           player.velocityX = this.approach(player.velocityX, desiredVelocity.x, acceleration);
           player.velocityY = this.approach(player.velocityY, desiredVelocity.y, acceleration);
@@ -2722,11 +2740,57 @@
       };
     }
 
+    getGoalKickRestarterTarget(point) {
+      return {
+        x: this.clamp(point.x ?? 50, 38, 62),
+        y: this.clamp(point.y ?? 50, 4, 96)
+      };
+    }
+
+    getGoalKickOutfielderTarget(player, team) {
+      if (
+        !player ||
+        !team ||
+        player.teamId !== this.ball.restartTeamId ||
+        this.ball.mode !== "out" ||
+        this.ball.restartReason !== "goal_kick" ||
+        player.role !== "ZAG"
+      ) {
+        return null;
+      }
+      const centerBacks = team.players
+        .filter((candidate) => candidate.role === "ZAG")
+        .sort((a, b) => a.baseX - b.baseX);
+      const index = Math.max(0, centerBacks.findIndex((candidate) => candidate.id === player.id));
+      const ownGoal = this.getOwnGoalPoint(team);
+      const direction = team.attacksDown ? 1 : -1;
+      const lanes = [42, 58, 50, 35, 65];
+      return {
+        x: lanes[index % lanes.length],
+        y: this.clamp(ownGoal.y + direction * (30 + Math.floor(index / 2) * 4), 8, 92)
+      };
+    }
+
     prepareThrowInRestart(point, restarter) {
       if (!restarter) return;
       const target = this.getThrowInRestarterTarget(point);
       restarter.targetX = target.x;
       restarter.targetY = target.y;
+    }
+
+    prepareGoalKickRestart(team, point, restarter) {
+      if (restarter) {
+        const target = this.getGoalKickRestarterTarget(point);
+        restarter.targetX = target.x;
+        restarter.targetY = target.y;
+      }
+      team.players.forEach((player) => {
+        const target = this.getGoalKickOutfielderTarget(player, team);
+        if (!target) return;
+        player.markingTargetId = null;
+        player.targetX = target.x;
+        player.targetY = target.y;
+      });
     }
 
     isThrowInRestarterReady(point, restarter) {
@@ -2735,11 +2799,26 @@
       return this.distance(restarter, target) <= 0.8;
     }
 
+    isGoalKickRestarterReady(point, restarter) {
+      if (!restarter) return true;
+      const target = this.getGoalKickRestarterTarget(point);
+      return this.distance(restarter, target) <= 1.2;
+    }
+
     isThrowInRestarter(player) {
       return Boolean(
         player &&
         this.ball.mode === "out" &&
         this.ball.restartReason === "throw_in" &&
+        player.id === this.ball.restartTakerId
+      );
+    }
+
+    isGoalKickRestarter(player) {
+      return Boolean(
+        player &&
+        this.ball.mode === "out" &&
+        this.ball.restartReason === "goal_kick" &&
         player.id === this.ball.restartTakerId
       );
     }
@@ -2768,6 +2847,11 @@
 
       if (reason === "throw_in") {
         this.prepareThrowInRestart(point, restarter);
+        return;
+      }
+
+      if (reason === "goal_kick") {
+        this.prepareGoalKickRestart(team, point, restarter);
         return;
       }
 
@@ -3044,6 +3128,9 @@
         : (reason === "corner"
           ? team.stats.corners
           : (reason === "goal_kick" ? team.stats.goalKicks : null));
+      const effectiveDelayMs = reason === "goal_kick"
+        ? Math.max(delayMs, GOAL_KICK_RESTART_DELAY_MS)
+        : delayMs;
       Object.assign(this.ball, {
         mode: "out",
         x: point.x,
@@ -3067,7 +3154,7 @@
         goalChanceOnTarget: null
       });
       this.possession = null;
-      this.restartRemainingMs = delayMs;
+      this.restartRemainingMs = effectiveDelayMs;
       this.positionForRestart(reason, team, point, restarter);
       this.emit(`${reason}_awarded`, {
         teamId: team.id,
@@ -3115,6 +3202,11 @@
         this.getRestartTaker(restartReason, team, restartPoint, selectedPlayerId) ||
         goalkeeper ||
         team.players[0];
+      if (restartReason === "goal_kick" && finalRestarter && !this.isGoalKickRestarterReady(restartPoint, finalRestarter)) {
+        this.prepareGoalKickRestart(team, restartPoint, finalRestarter);
+        this.restartRemainingMs = 100;
+        return;
+      }
       this.positionForRestart(restartReason, team, restartPoint, finalRestarter);
       if (restartReason === "corner" && finalRestarter) {
         this.takeCorner(finalRestarter, restartPoint);

@@ -188,6 +188,51 @@ test("the last touch at the end line distinguishes a corner from a goal kick", (
   assert.equal(goalKickEngine.ball.restartTeamId, goalKickDefendingTeam.id);
 });
 
+test("a shot wide lets the goalkeeper move to the goal kick without jumping", () => {
+  const engine = new MatchEngine({
+    teams: createTeams(),
+    seed: 195,
+    matchClockRate: 1,
+    autonomous: false
+  });
+  const shooter = engine.getController();
+  const defendingTeam = engine.getOpponent(engine.getTeam(shooter.teamId));
+  const goalkeeper = defendingTeam.players.find((player) => player.role === "GOL");
+
+  engine.command({ type: "start" });
+  engine.performShot(shooter, { outcome: "out" });
+
+  let previous = { x: goalkeeper.x, y: goalkeeper.y };
+  let largestGoalkeeperStep = 0;
+  let outAtMs = null;
+  let controlledAtMs = null;
+  for (let elapsedMs = 0; elapsedMs < 5_000; elapsedMs += 50) {
+    engine.advance(50);
+    largestGoalkeeperStep = Math.max(
+      largestGoalkeeperStep,
+      Math.hypot(goalkeeper.x - previous.x, goalkeeper.y - previous.y)
+    );
+    previous = { x: goalkeeper.x, y: goalkeeper.y };
+    if (outAtMs === null && engine.ball.mode === "out" && engine.ball.restartReason === "goal_kick") {
+      outAtMs = elapsedMs + 50;
+    }
+    if (outAtMs !== null && engine.ball.mode === "controlled") {
+      controlledAtMs = elapsedMs + 50;
+      break;
+    }
+  }
+
+  assert.ok(outAtMs !== null);
+  assert.ok(controlledAtMs !== null);
+  assert.ok(
+    largestGoalkeeperStep <= 1.2,
+    `goalkeeper jumped ${largestGoalkeeperStep.toFixed(2)} field units in one frame`
+  );
+  const restartDelayMs = controlledAtMs - outAtMs;
+  assert.ok(restartDelayMs >= 2_200, `goal kick restarted too quickly after ${restartDelayMs}ms`);
+  assert.ok(restartDelayMs <= 3_100, `goal kick restart waited too long: ${restartDelayMs}ms`);
+});
+
 test("a throw-in restart keeps shape and waits for the nearest player to run to the line", () => {
   const engine = new MatchEngine({
     teams: createTeams(),
