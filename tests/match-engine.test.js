@@ -269,7 +269,7 @@ test("a clean tackle transfers controlled possession to the defender", () => {
   assert.ok(engine.drainEvents().some((event) => event.type === "tackle_won"));
 });
 
-test("a deflected tackle beside the touchline can immediately produce a throw-in", () => {
+test("a deflected tackle beside the touchline sends the ball out naturally", () => {
   const engine = new MatchEngine({
     teams: createTeams(),
     seed: 20,
@@ -288,6 +288,14 @@ test("a deflected tackle beside the touchline can immediately produce a throw-in
   engine.command({ type: "start" });
   engine.resolveTackle(defender, carrier, "deflected");
 
+  assert.equal(engine.ball.mode, "loose");
+  assert.ok(engine.ball.x > 1);
+  assert.ok(engine.ball.velocityX < 0);
+
+  for (let tick = 0; tick < 10 && engine.ball.mode === "loose"; tick += 1) {
+    engine.advance(50);
+  }
+
   assert.equal(engine.ball.mode, "out");
   assert.equal(engine.ball.restartReason, "throw_in");
   assert.equal(engine.ball.restartTeamId, attackingTeam.id);
@@ -303,11 +311,21 @@ test("a failed wide control can carry the ball through the touchline", () => {
   const receiver = engine.teams[0].players.find((player) => player.role === "ME");
   receiver.x = 18;
   receiver.y = 52;
+  engine.ball.x = receiver.x;
+  engine.ball.y = receiver.y;
+  engine.command({ type: "start" });
   engine.makeBallLoose({ x: -6, y: 0 }, receiver.teamId);
 
   const awarded = engine.maybeAwardThrowInAfterBadControl(receiver, true);
 
   assert.equal(awarded, true);
+  assert.equal(engine.ball.mode, "loose");
+  assert.ok(engine.ball.velocityX < 0);
+
+  for (let tick = 0; tick < 70 && engine.ball.mode === "loose"; tick += 1) {
+    engine.advance(50);
+  }
+
   assert.equal(engine.ball.mode, "out");
   assert.equal(engine.ball.restartReason, "throw_in");
   assert.equal(engine.ball.restartTeamId, engine.teams[1].id);

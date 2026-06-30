@@ -224,6 +224,8 @@
         speed: 0,
         velocityX: 0,
         velocityY: 0,
+        looseRecoveryDelayMs: 0,
+        looseTouchlineGuideDirection: 0,
         travelled: 0,
         distance: 0,
         outcome: null,
@@ -784,13 +786,33 @@
       if (!player || this.ball.mode !== "loose") return false;
       const touchlineDistance = Math.min(player.x, 100 - player.x);
       if (touchlineDistance > 30 || (!force && this.random.next() > 0.55)) return false;
-      const lastTouchTeam = this.getTeam(player.teamId);
-      const restartTeam = lastTouchTeam ? this.getOpponent(lastTouchTeam) : this.teams[0];
-      const exitX = player.x < 50 ? 1 : 99;
-      this.scheduleRestart("throw_in", restartTeam, {
-        x: exitX,
-        y: this.clamp(player.y, 3, 97)
+      this.guideLooseBallToTouchline(player, player.teamId);
+      return true;
+    }
+
+    guideLooseBallToTouchline(player, lastTouchedTeamId = player?.teamId) {
+      if (!player) return false;
+      const direction = player.x < 50 ? -1 : 1;
+      const distanceToLine = direction < 0 ? player.x - 1 : 99 - player.x;
+      const travelSeconds = this.clamp(0.35 + Math.max(0, distanceToLine) / 14, 0.45, 2.75);
+      const speed = this.clamp(Math.max(1, distanceToLine) / 1.35, 6, 18);
+      if (this.ball.mode !== "loose" || this.distance(this.ball, player) > 4) {
+        this.ball.x = player.x;
+        this.ball.y = player.y;
+      }
+      Object.assign(this.ball, {
+        mode: "loose",
+        controllerId: null,
+        intendedReceiverId: null,
+        action: null,
+        speed: 0,
+        velocityX: direction * speed,
+        velocityY: (this.random.next() - 0.5) * 1.8,
+        looseRecoveryDelayMs: Math.ceil((travelSeconds + 0.2) * 1000),
+        looseTouchlineGuideDirection: direction,
+        lastTouchedTeamId
       });
+      this.possession = null;
       return true;
     }
 
@@ -803,6 +825,8 @@
         speed: 0,
         velocityX: velocity.x || 0,
         velocityY: velocity.y || 0,
+        looseRecoveryDelayMs: 0,
+        looseTouchlineGuideDirection: 0,
         outcome: null,
         restartReason: null,
         restartX: null,
@@ -863,6 +887,8 @@
         speed: 0,
         velocityX: 0,
         velocityY: 0,
+        looseRecoveryDelayMs: 0,
+        looseTouchlineGuideDirection: 0,
         travelled: 0,
         distance: 0,
         outcome: null,
@@ -1780,13 +1806,12 @@
         const exitDistance = isTouchline ? 14 : 8;
         const exitChance = isTouchline ? 0.86 : 0.62;
         if (nearestBoundary.distance < exitDistance && this.random.next() < exitChance) {
-          this.ball.x = nearestBoundary.direction.x < 0
-            ? 0.5
-            : (nearestBoundary.direction.x > 0 ? 99.5 : carrier.x);
-          this.ball.y = nearestBoundary.direction.y < 0
-            ? 0.5
-            : (nearestBoundary.direction.y > 0 ? 99.5 : carrier.y);
-          this.classifyBallOut();
+          if (isTouchline) {
+            this.guideLooseBallToTouchline(carrier, defender.teamId);
+          } else {
+            this.ball.velocityY = nearestBoundary.direction.y * Math.max(5.5, Math.abs(this.ball.velocityY));
+            this.ball.looseRecoveryDelayMs = 450;
+          }
         }
         return true;
       }
@@ -2518,8 +2543,19 @@
       const friction = Math.pow(0.16, seconds);
       this.ball.velocityX *= friction;
       this.ball.velocityY *= friction;
+      if (this.ball.looseTouchlineGuideDirection) {
+        const direction = this.ball.looseTouchlineGuideDirection;
+        const distanceToLine = direction < 0 ? this.ball.x - 1 : 99 - this.ball.x;
+        if (distanceToLine > 0) {
+          const guidedSpeed = this.clamp(distanceToLine / 1.35, 6, 18);
+          this.ball.velocityX = direction * Math.max(Math.abs(this.ball.velocityX), guidedSpeed);
+        }
+      }
 
-      const nearest = this.nearestPlayers(this.allPlayers(), this.ball, 1)[0];
+      this.ball.looseRecoveryDelayMs = Math.max(0, (this.ball.looseRecoveryDelayMs || 0) - stepMs);
+      const nearest = this.ball.looseRecoveryDelayMs > 0
+        ? null
+        : this.nearestPlayers(this.allPlayers(), this.ball, 1)[0];
       if (nearest && this.distance(nearest, this.ball) < 1.7) {
         nearest.matchStats.recoveries += 1;
         this.setBallController(nearest);
@@ -2958,7 +2994,9 @@
         restartY: point.y,
         restartTakerId: restarter?.id || null,
         restartDangerous: dangerous,
-        restartSelectable: selectable
+        restartSelectable: selectable,
+        looseRecoveryDelayMs: 0,
+        looseTouchlineGuideDirection: 0
       });
       this.possession = null;
       this.restartRemainingMs = delayMs;
