@@ -327,7 +327,7 @@ test("a failed wide control can carry the ball through the touchline", () => {
   assert.equal(engine.ball.mode, "loose");
   assert.ok(engine.ball.velocityX < 0);
 
-  for (let tick = 0; tick < 70 && engine.ball.mode === "loose"; tick += 1) {
+  for (let tick = 0; tick < 30 && engine.ball.mode === "loose"; tick += 1) {
     engine.advance(50);
   }
 

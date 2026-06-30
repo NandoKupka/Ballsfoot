@@ -794,8 +794,8 @@
       if (!player) return false;
       const direction = player.x < 50 ? -1 : 1;
       const distanceToLine = direction < 0 ? player.x - 1 : 99 - player.x;
-      const travelSeconds = this.clamp(0.35 + Math.max(0, distanceToLine) / 14, 0.45, 2.75);
-      const speed = this.clamp(Math.max(1, distanceToLine) / 1.35, 6, 18);
+      const travelSeconds = this.clamp(0.28 + Math.max(0, distanceToLine) / 30, 0.36, 1.05);
+      const speed = this.clamp((Math.max(1, distanceToLine) + 1.2) / travelSeconds, 12, 34);
       if (this.ball.mode !== "loose" || this.distance(this.ball, player) > 4) {
         this.ball.x = player.x;
         this.ball.y = player.y;
@@ -2544,17 +2544,11 @@
       const seconds = stepMs / 1000;
       this.ball.x += this.ball.velocityX * seconds;
       this.ball.y += this.ball.velocityY * seconds;
-      const friction = Math.pow(0.16, seconds);
+      const friction = this.ball.looseTouchlineGuideDirection
+        ? Math.pow(0.58, seconds)
+        : Math.pow(0.16, seconds);
       this.ball.velocityX *= friction;
       this.ball.velocityY *= friction;
-      if (this.ball.looseTouchlineGuideDirection) {
-        const direction = this.ball.looseTouchlineGuideDirection;
-        const distanceToLine = direction < 0 ? this.ball.x - 1 : 99 - this.ball.x;
-        if (distanceToLine > 0) {
-          const guidedSpeed = this.clamp(distanceToLine / 1.35, 6, 18);
-          this.ball.velocityX = direction * Math.max(Math.abs(this.ball.velocityX), guidedSpeed);
-        }
-      }
 
       this.ball.looseRecoveryDelayMs = Math.max(0, (this.ball.looseRecoveryDelayMs || 0) - stepMs);
       const nearest = this.ball.looseRecoveryDelayMs > 0
