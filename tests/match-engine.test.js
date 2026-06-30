@@ -212,6 +212,8 @@ test("a throw-in restart keeps shape and waits for the nearest player to run to 
   restarter.y = 62;
   restarter.targetX = restarter.x;
   restarter.targetY = restarter.y;
+  restarter.stamina = 42;
+  restarter.sprintStamina = 5;
   teammate.x = 54;
   teammate.y = 44;
   teammate.targetX = teammate.x;
@@ -230,10 +232,13 @@ test("a throw-in restart keeps shape and waits for the nearest player to run to 
 
   engine.advance(50);
   assert.equal(engine.ball.mode, "out");
+  assert.equal(restarter.movementMode, "run");
+  assert.equal(restarter.stamina, 42);
+  assert.equal(restarter.sprintStamina, 5);
   assert.ok(restarter.x > 88);
   assert.ok(restarter.x < 96);
 
-  for (let tick = 0; tick < 120 && engine.ball.mode === "out"; tick += 1) {
+  for (let tick = 0; tick < 25 && engine.ball.mode === "out"; tick += 1) {
     engine.advance(50);
   }
 

@@ -1639,12 +1639,15 @@
       this.teams.forEach((team) => {
         team.players.forEach((player) => {
           const distance = Math.hypot(player.targetX - player.x, player.targetY - player.y);
-          const movementMode = this.getMovementMode(player, team, distance, controller);
+          const throwInRestarter = this.isThrowInRestarter(player);
+          const movementMode = throwInRestarter
+            ? "run"
+            : this.getMovementMode(player, team, distance, controller);
           const movementProfile = this.getPlayerMovementProfile(player);
           const modeProfile = MOVEMENT_MODES[movementMode];
           player.movementMode = movementMode;
-          this.updatePlayerStamina(player, movementMode, seconds);
-          const baseSpeed = movementProfile[movementMode];
+          if (!throwInRestarter) this.updatePlayerStamina(player, movementMode, seconds);
+          const baseSpeed = movementProfile[movementMode] * (throwInRestarter ? 2.35 : 1);
           const pressurePenalty = player === controller && player.pressure > 0.55 ? 0.82 : 1;
           const arrivalFactor = this.clamp(distance / 4.5, 0.12, 1);
           const desiredSpeed = baseSpeed * pressurePenalty * arrivalFactor;
@@ -1658,6 +1661,7 @@
           const acceleration = (this.isForward(player) || this.isWide(player) ? 20 : 17) *
             accelerationFactor *
             modeProfile.accelerationRatio *
+            (throwInRestarter ? 2.6 : 1) *
             seconds;
           player.velocityX = this.approach(player.velocityX, desiredVelocity.x, acceleration);
           player.velocityY = this.approach(player.velocityY, desiredVelocity.y, acceleration);
@@ -2683,6 +2687,15 @@
       if (!restarter) return true;
       const target = this.getThrowInRestarterTarget(point);
       return this.distance(restarter, target) <= 0.8;
+    }
+
+    isThrowInRestarter(player) {
+      return Boolean(
+        player &&
+        this.ball.mode === "out" &&
+        this.ball.restartReason === "throw_in" &&
+        player.id === this.ball.restartTakerId
+      );
     }
 
     placePlayerForRestart(player, x, y) {
