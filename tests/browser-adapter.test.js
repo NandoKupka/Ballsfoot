@@ -145,6 +145,13 @@ test("the browser adapter initializes the engine and mounts every player", () =>
   assert.equal(firstToken.style.values.get("--stamina-color"), "#45c46d");
   assert.equal(document.getElementById("clock").textContent, "00'");
   assert.equal(document.getElementById("score").textContent, "0 x 0");
+  assert.equal(context.tacticsGame.speedOptions.at(-1), 10);
+  context.tacticsGame.setSpeed(10);
+  assert.equal(context.tacticsGame.speed, 10);
+  assert.equal(document.getElementById("speed-slider").value, "8");
+  assert.equal(document.getElementById("speed-value").textContent, "10.0x");
+  assert.equal(document.documentElement.style.values.get("--ball-move-ms"), "14ms");
+  assert.equal(document.documentElement.style.values.get("--player-move-ms"), "9ms");
 
   const staminaSnapshot = context.tacticsGame.engine.getSnapshot();
   const firstPlayer = staminaSnapshot.teams[0].players[0];

@@ -15,7 +15,7 @@
   class BrowserGameAdapter {
     constructor(documentRef = root.document, options = {}) {
       this.document = documentRef;
-      this.speedOptions = [0.5, 1, 1.5, 2, 3, 4, 5];
+      this.speedOptions = [0.5, 1, 1.5, 2, 3, 4, 5, 7.5, 10];
       this.speed = 1;
       this.lastFrameAt = null;
       this.animationFrameId = null;
