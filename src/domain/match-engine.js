@@ -794,8 +794,8 @@
       if (!player) return false;
       const direction = player.x < 50 ? -1 : 1;
       const distanceToLine = direction < 0 ? player.x - 1 : 99 - player.x;
-      const travelSeconds = this.clamp(0.28 + Math.max(0, distanceToLine) / 30, 0.36, 1.05);
-      const speed = this.clamp((Math.max(1, distanceToLine) + 1.2) / travelSeconds, 12, 34);
+      const travelSeconds = this.clamp(0.22 + Math.max(0, distanceToLine) / 36, 0.3, 0.9);
+      const speed = this.clamp((Math.max(1, distanceToLine) + 1.2) / travelSeconds, 16, 38);
       if (this.ball.mode !== "loose" || this.distance(this.ball, player) > 4) {
         this.ball.x = player.x;
         this.ball.y = player.y;
@@ -2545,7 +2545,7 @@
       this.ball.x += this.ball.velocityX * seconds;
       this.ball.y += this.ball.velocityY * seconds;
       const friction = this.ball.looseTouchlineGuideDirection
-        ? Math.pow(0.58, seconds)
+        ? Math.pow(0.7, seconds)
         : Math.pow(0.16, seconds);
       this.ball.velocityX *= friction;
       this.ball.velocityY *= friction;
