@@ -39,9 +39,10 @@ The current product surface is a live match simulator: two teams line up in a 4-
 - Active fullback: the fullback temporarily released to support or overlap on the ball side; the opposite fullback remains balanced behind the attack.
 - Midfield balance: the temporary division of the two central midfielders into a supporting player near the ball and a holding player protecting the center.
 - Complementary forward movement: one forward approaches the ball or channel while the other preserves depth or attacks behind the defense.
+- Off-ball intent: the current attacking or defensive movement job assigned to a player away from the ball, such as support, depth run, wide run, box arrival, cutback option, pressing, or balance.
 - Transition: the short phase immediately after possession changes, expressed as a counterattack by the recovering team and a counterpress by the team that lost the ball.
 - Offside position: a receiving position in the opponent's half beyond both the ball and the second-last opponent at the instant a teammate plays the ball.
-- Offside offense: active involvement by the intended receiver from an offside position, resulting in a defending-team restart.
+- Offside offense: active involvement by the intended receiver from an offside position, resulting in a quick defending-team restart from the offense spot. It is not a foul.
 - First-time pass: an immediate redirection of a received ball without establishing a new controlled-possession phase. Intelligence governs whether the player recognizes the option in time; technique governs execution.
 - Wall pass: a first-time return pass to the teammate who supplied the ball, allowing that teammate to continue the attacking move.
 - Cover shadow: a defender positioned between the possession holder and a likely receiver to close a passing lane without abandoning the team block.

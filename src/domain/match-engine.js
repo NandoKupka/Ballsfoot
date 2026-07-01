@@ -312,6 +312,7 @@
             spaceScore: 0,
             movementPhase: this.random.next() * Math.PI * 2,
             roamingBias: this.random.next() * 2 - 1,
+            offBallIntent: null,
             carryBurstUntilMs: 0,
             nextTargetReviewMs: 0,
             nextTackleAttemptMs: 0
@@ -948,29 +949,11 @@
     callOffside(passer, receiver, offside) {
       const attackingTeam = this.getTeam(passer.teamId);
       const defendingTeam = this.getOpponent(attackingTeam);
-      Object.assign(this.ball, {
-        mode: "out",
-        x: receiver.x,
-        y: receiver.y,
-        controllerId: null,
-        intendedReceiverId: null,
-        action: null,
-        restartTeamId: defendingTeam.id,
-        restartReason: "offside",
-        restartX: receiver.x,
-        restartY: receiver.y,
-        restartTakerId: null,
-        restartDangerous: false,
-        restartSelectable: false,
-        passerId: passer.id,
-        lastTouchedTeamId: passer.teamId
-      });
-      this.possession = null;
-      this.restartRemainingMs = 520;
-      this.emit("offside", {
-        teamId: attackingTeam.id,
+      this.scheduleRestart("offside", defendingTeam, { x: receiver.x, y: receiver.y }, 420, {
         playerId: receiver.id,
         passerId: passer.id,
+        offendingTeamId: attackingTeam.id,
+        lastTouchedTeamId: passer.teamId,
         restartTeamId: defendingTeam.id,
         playerProgress: offside.playerProgress,
         ballProgress: offside.ballProgress,
@@ -1163,8 +1146,10 @@
         team.players.forEach((player) => {
           if (player.role === "GOL") {
             player.markingTargetId = null;
+            player.offBallIntent = inPossession ? "hold_balance" : "hold_shape";
             if (this.isGoalKickRestarter(player)) {
               const target = this.getGoalKickRestarterTarget(this.ball);
+              player.offBallIntent = "restart";
               player.targetX = target.x;
               player.targetY = target.y;
               return;
@@ -1183,6 +1168,7 @@
           const goalKickTarget = this.getGoalKickOutfielderTarget(player, team);
           if (goalKickTarget) {
             player.markingTargetId = null;
+            player.offBallIntent = "restart_shape";
             player.targetX = goalKickTarget.x;
             player.targetY = goalKickTarget.y;
             return;
@@ -1195,6 +1181,7 @@
           ) {
             const target = this.getThrowInRestarterTarget(this.ball);
             player.markingTargetId = null;
+            player.offBallIntent = "restart";
             player.targetX = target.x;
             player.targetY = target.y;
             return;
@@ -1202,6 +1189,7 @@
 
           if (player === carrier) {
             player.markingTargetId = null;
+            player.offBallIntent = "carry";
             const goal = this.getGoalPoint(team);
             const towardGoal = this.normalized(player, goal);
             const burstMultiplier = (player.carryBurstUntilMs || 0) > this.simulationElapsedMs ? 1.45 : 1;
@@ -1213,6 +1201,7 @@
 
           if (!inPossession && player === nearestPresser) {
             player.markingTargetId = carrier.id;
+            player.offBallIntent = "press";
             const pressureDepth = context.pressTrigger ? 0.07 : 0.1;
             const pressPoint = this.pointBetween(carrier, this.getOwnGoalPoint(team), pressureDepth);
             player.targetX = this.clamp(pressPoint.x, 5, 95);
@@ -1222,6 +1211,7 @@
 
           if (inPossession) {
             player.markingTargetId = null;
+            player.offBallIntent = this.getOffBallIntent(player, team, carrier, context);
             const distanceToTarget = Math.hypot(player.targetX - player.x, player.targetY - player.y);
             if (this.simulationElapsedMs >= player.nextTargetReviewMs || distanceToTarget < 1.2) {
               const target = this.getOffBallTarget(player, team, carrier, context);
@@ -1243,6 +1233,7 @@
             context
           );
           player.markingTargetId = markingAssignments.get(player.id)?.id || null;
+          player.offBallIntent = player.markingTargetId ? "mark" : "hold_shape";
           player.targetX = this.clamp(player.targetX * 0.18 + defensiveTarget.x * 0.82, 5, 95);
           player.targetY = this.clamp(player.targetY * 0.18 + defensiveTarget.y * 0.82, 5, 95);
         });
@@ -1311,7 +1302,56 @@
       };
     }
 
-    getCollectiveAttackingTarget(player, team, carrier, context) {
+    getOffBallIntent(player, team, carrier, context) {
+      if (!carrier || player === carrier) return player === carrier ? "carry" : "hold_balance";
+      const carrierProgress = this.getAttackProgress(carrier, team);
+      const side = player.baseX < 50 ? -1 : 1;
+      const sameSideAsBall = context.ballSide === "center" ||
+        ((side < 0) === (context.ballSide === "left"));
+
+      if (this.isForward(player)) {
+        const forwards = team.players
+          .filter((candidate) => this.isForward(candidate))
+          .sort((a, b) => a.baseX - b.baseX || a.number - b.number);
+        const carrierSide = carrier.x < 50 ? -1 : (carrier.x > 50 ? 1 : 0);
+        const sameSideForward = carrierSide
+          ? forwards.find((candidate) => (candidate.baseX < 50 ? -1 : 1) === carrierSide)
+          : null;
+        const supportForward = sameSideForward || context.droppingForward || forwards[0] || null;
+        const oppositeForward = forwards.find((candidate) => candidate !== supportForward) || null;
+        if (context.crossing) return player === supportForward ? "box_arrival" : "cutback_option";
+        if (Math.abs(carrier.x - 50) >= 24 && carrierProgress >= 48) {
+          return player === supportForward ? "inside_channel" : "box_arrival";
+        }
+        if (context.phase === "counterattack") {
+          return player === context.runningForward ? "depth_run" : "support";
+        }
+        return player === (oppositeForward || context.runningForward) ? "depth_run" : "support";
+      }
+
+      if (["VOL", "MC"].includes(player.role)) {
+        if (context.crossing && context.supportingMidfielder?.id === player.id) return "box_arrival";
+        return context.supportingMidfielder?.id === player.id ? "support" : "hold_balance";
+      }
+
+      if (this.isFullback(player)) {
+        return context.activeFullback?.id === player.id ? "wide_run" : "hold_balance";
+      }
+
+      if (this.isWideMidfielder(player) || player.role === "ALA") {
+        const activeOnSide = context.activeFullback &&
+          ((context.activeFullback.baseX < 50) === (player.baseX < 50));
+        const farSide = !sameSideAsBall && context.ballSide !== "center";
+        if (context.crossing && farSide) return "box_arrival";
+        if (activeOnSide && sameSideAsBall && carrierProgress < 66) return "inside_channel";
+        return sameSideAsBall || carrierProgress > 54 ? "wide_run" : "hold_balance";
+      }
+
+      if (player.role === "ZAG") return "hold_balance";
+      return "support";
+    }
+
+    getCollectiveAttackingTarget(player, team, carrier, context, intent = player.offBallIntent || this.getOffBallIntent(player, team, carrier, context)) {
       const direction = team.attacksDown ? 1 : -1;
       const progressPoint = (x, progress) => ({
         x,
@@ -1351,39 +1391,41 @@
 
       if (["VOL", "MC"].includes(player.role)) {
         const isSupport = context.supportingMidfielder?.id === player.id;
-        if (context.crossing && isSupport) {
+        if (intent === "box_arrival") {
           return progressPoint(50 + side * 7, 76);
         }
         return progressPoint(
-          isSupport
+          intent === "support"
             ? this.clamp(carrier.x + (50 - carrier.x) * 0.38 + side * 5, 30, 70)
             : 50 - side * 9,
           this.clamp(
-            carrierProgress + (isSupport ? 1 : -14),
-            isSupport ? 34 : 24,
-            isSupport ? 76 : 62
+            carrierProgress + (intent === "support" ? 1 : -14),
+            intent === "support" ? 34 : 24,
+            intent === "support" ? 76 : 62
           )
         );
       }
 
       if (this.isForward(player)) {
-        const isDropping = context.droppingForward?.id === player.id;
-        if (context.crossing) {
+        if (intent === "box_arrival" || intent === "cutback_option") {
           const crossFromLeft = carrier.x < 50;
-          const firstPostPlayer = team.players
-            .filter((candidate) => this.isForward(candidate))
-            .sort((a, b) => crossFromLeft ? a.x - b.x : b.x - a.x)[0];
           return progressPoint(
-            player.id === firstPostPlayer?.id
+            intent === "box_arrival"
               ? (crossFromLeft ? 42 : 58)
-              : 50,
-            player.id === firstPostPlayer?.id ? 88 : 84
+              : (crossFromLeft ? 57 : 43),
+            intent === "box_arrival" ? 89 : 80
           );
         }
-        if (isDropping) {
+        if (intent === "inside_channel") {
+          return progressPoint(
+            this.clamp(carrier.x + side * 13, 18, 82),
+            this.clamp(carrierProgress + 15, 58, 88)
+          );
+        }
+        if (intent === "support") {
           return progressPoint(
             this.clamp(carrier.x + side * 8, 28, 72),
-            this.clamp(carrierProgress + 5, 48, 72)
+            this.clamp(carrierProgress + 4, 46, 72)
           );
         }
         return progressPoint(
@@ -1399,14 +1441,12 @@
       if (this.isWideMidfielder(player) || player.role === "ALA") {
         const activeOnSide = context.activeFullback &&
           ((context.activeFullback.baseX < 50) === (player.baseX < 50));
-        const farSide = !sameSideAsBall && context.ballSide !== "center";
-        if (context.crossing && farSide) {
+        if (intent === "box_arrival") {
           return progressPoint(side < 0 ? 34 : 66, 84);
         }
         const attacksDepth = context.phase === "counterattack" ||
-          (sameSideAsBall && carrierProgress > 48 && pulse > 0.15);
-        const movesInside = activeOnSide && sameSideAsBall && !attacksDepth && pulse > -0.45;
-        if (movesInside) {
+          (intent === "wide_run" && carrierProgress > 48 && pulse > 0.15);
+        if (intent === "inside_channel" || (activeOnSide && sameSideAsBall && !attacksDepth && pulse > -0.45)) {
           return progressPoint(
             side < 0 ? 37 : 63,
             this.clamp(carrierProgress + 7, 46, 80)
@@ -1439,13 +1479,23 @@
       const marker = this.nearestPlayers(opponents.filter((opponent) => opponent.role !== "GOL"), player, 1)[0];
       const awayFromMarker = marker ? this.normalized(marker, player) : { x: 0, y: 0 };
       const anchor = this.getAttackingAnchor(player, team);
-      const collectiveTarget = this.getCollectiveAttackingTarget(player, team, carrier, context);
+      const intent = player.offBallIntent || this.getOffBallIntent(player, team, carrier, context);
+      const collectiveTarget = this.getCollectiveAttackingTarget(player, team, carrier, context, intent);
       const side = Math.sign(player.baseX - 50) || (player.number % 2 ? -1 : 1);
       const supportSide = Math.sign(player.x - carrier.x) || side;
       const pulse = Math.sin(this.simulationElapsedMs / 1_150 + player.movementPhase);
       const carrierProgress = this.getAttackProgress(carrier, team);
+      const intentBias = {
+        support: 0.12,
+        depth_run: 0.12,
+        wide_run: 0.1,
+        inside_channel: 0.11,
+        box_arrival: 0.14,
+        cutback_option: 0.13,
+        hold_balance: 0.08
+      }[intent] || 0;
       const candidates = [
-        { point: collectiveTarget, bias: 0.22 },
+        { point: collectiveTarget, bias: 0.22 + intentBias },
         { point: anchor, bias: 0.08 },
         { point: {
           x: carrier.x + supportSide * (this.isForward(player) ? 11 : 9),
@@ -1598,20 +1648,32 @@
     assignDefensiveMarks(team, carrier, presser, context) {
       const assignments = new Map();
       const assignedOpponents = new Set();
+      const ownGoal = this.getOwnGoalPoint(team);
       const opponents = this.getOpponent(team).players
         .filter((opponent) => opponent.role !== "GOL" && opponent !== carrier)
-        .sort((a, b) => this.distance(a, this.getOwnGoalPoint(team)) - this.distance(b, this.getOwnGoalPoint(team)));
+        .sort((a, b) => this.distance(a, ownGoal) - this.distance(b, ownGoal));
       const defenders = team.players
         .filter((player) => player.role !== "GOL" && player !== presser)
-        .sort((a, b) => this.distance(a, carrier) - this.distance(b, carrier));
+        .sort((a, b) => {
+          const priority = (player) => player.role === "VOL" ? -8 : (player.role === "ZAG" ? -6 : 0);
+          return priority(a) - priority(b) || this.distance(a, carrier) - this.distance(b, carrier);
+        });
 
       defenders.forEach((defender) => {
+        const defensiveSpine = defender.role === "VOL" || defender.role === "ZAG";
         const mark = opponents
           .filter((opponent) => !assignedOpponents.has(opponent.id))
           .map((opponent) => {
             const laneDistance = Math.abs(opponent.x - defender.baseX);
             const currentDistance = this.distance(defender, opponent);
-            const threat = this.distance(opponent, this.getOwnGoalPoint(team));
+            const threat = this.distance(opponent, ownGoal);
+            const centralThreat = Math.abs(opponent.x - 50) <= 22;
+            const roleThreat = this.isForward(opponent)
+              ? -8
+              : (["MC", "VOL"].includes(opponent.role) ? -4.5 : (this.isWideMidfielder(opponent) ? -2 : 3));
+            const spineMatchBonus = defensiveSpine && centralThreat && (this.isForward(opponent) || ["MC", "VOL"].includes(opponent.role))
+              ? -6
+              : 0;
             const rolePenalty = this.isDefensive(defender) ? 0 : 2.5;
             const oppositeSidePenalty = this.isWide(defender) &&
               Math.sign(defender.baseX - 50) !== Math.sign(opponent.x - 50)
@@ -1625,7 +1687,9 @@
               opponent,
               score: currentDistance +
                 laneDistance * 0.18 +
-                threat * 0.04 +
+                threat * 0.08 +
+                roleThreat +
+                spineMatchBonus +
                 rolePenalty -
                 defensiveReading * 4 +
                 oppositeSidePenalty,
@@ -1633,7 +1697,7 @@
             };
           })
           .filter((candidate) =>
-            candidate.currentDistance <= (context.transition === "counterpress" ? 21 : 16) &&
+            candidate.currentDistance <= (defensiveSpine ? 23 : (context.transition === "counterpress" ? 21 : 16)) &&
             candidate.score < 34
           )
           .sort((a, b) => a.score - b.score)[0]?.opponent;
@@ -1663,12 +1727,15 @@
 
       if (!mark) return this.avoidCrowding(player, zoneTarget);
 
-      const goalSide = this.pointBetween(mark, this.getOwnGoalPoint(team), this.isDefensive(player) ? 0.16 : 0.1);
+      const centralDanger = Math.abs(mark.x - 50) <= 22 && (this.isForward(mark) || ["MC", "VOL"].includes(mark.role));
+      const defensiveSpine = player.role === "VOL" || player.role === "ZAG";
+      const goalSideDepth = defensiveSpine && centralDanger ? 0.09 : (this.isDefensive(player) ? 0.16 : 0.1);
+      const goalSide = this.pointBetween(mark, this.getOwnGoalPoint(team), goalSideDepth);
       const defensiveQuality = (player.attributes.defense + player.attributes.intelligence) / 200;
       const markingWeight = this.clamp(
-        (this.isDefensive(player) ? 0.712 : 0.632) + defensiveQuality * 0.2,
+        (defensiveSpine && centralDanger ? 0.82 : (this.isDefensive(player) ? 0.712 : 0.632)) + defensiveQuality * 0.2,
         0.68,
-        0.94
+        defensiveSpine && centralDanger ? 0.98 : 0.94
       );
       const target = {
         x: zoneTarget.x * (1 - markingWeight) + goalSide.x * markingWeight,
@@ -1760,11 +1827,23 @@
           const nearestDefendingFactor = nearest
             ? 0.72 + nearest.opponent.attributes.defense / 180
             : 1;
+          const centralSpinePressure = Math.abs(player.x - 50) <= 22
+            ? distances
+                .filter((item) => ["ZAG", "VOL"].includes(item.opponent.role) && item.distance < 12)
+                .reduce((sum, item) => {
+                  const reading = (
+                    item.opponent.attributes.defense * 0.56 +
+                    item.opponent.attributes.intelligence * 0.3 +
+                    item.opponent.attributes.physical * 0.14
+                  ) / 100;
+                  return sum + ((12 - item.distance) / 12) * (0.16 + reading * 0.18);
+                }, 0)
+            : 0;
           const composureFactor = 1.22 -
             (player.attributes.technique * 0.45 + player.attributes.intelligence * 0.55) / 260;
           player.markerId = nearest?.opponent.id || null;
           player.pressure = nearest
-            ? this.clamp(((1 - nearest.distance / 17) * nearestDefendingFactor + crowd * 0.1) * composureFactor, 0, 1)
+            ? this.clamp(((1 - nearest.distance / 17) * nearestDefendingFactor + crowd * 0.1 + centralSpinePressure) * composureFactor, 0, 1)
             : 0;
           player.spaceScore = this.clamp((nearest?.distance || 18) / 18, 0, 1);
         });
@@ -2399,15 +2478,17 @@
           } else if (passer.role === "ZAG" && this.isForward(player) && distance > 28) {
             buildUpBias *= 0.16;
           }
-          const offsidePenalty = this.isOffside(player, passer) ? 0.02 : 1;
+          const offside = this.getOffsidePosition(player, passer);
+          const offsidePenalty = offside.isOffside ? 0.003 : 1;
           const passerQuality = (passer.attributes.technique * 0.58 + passer.attributes.intelligence * 0.42) / 100;
           const receiverQuality = (player.attributes.technique + player.attributes.intelligence) / 200;
           const abilityBias = 0.62 + passerQuality * 0.24 + receiverQuality * 0.24;
           const longPassSkill = distance > 30 ? 0.42 + passerQuality * 0.78 : 1;
+          const minimumWeight = offside.isOffside ? 0.0006 : 0.003;
           return {
             player,
             weight: Math.max(
-              0.003,
+              minimumWeight,
               distanceFit *
               progressBias *
               backwardReleaseBias *
@@ -2456,7 +2537,7 @@
         return this.clamp(0.76 + quality * 0.18, 0.72, 0.96);
       }
       const distanceScore = 1 - this.clamp(distance / 50, 0, 1);
-      let chance = 0.18 + quality * 0.45 + Math.pow(distanceScore, 0.85) * 0.34 - pressure * 0.18;
+      let chance = 0.18 + quality * 0.45 + Math.pow(distanceScore, 0.85) * 0.34 - pressure * 0.23;
       if (setPiece === "free_kick") chance += 0.08 + quality * 0.05;
       if (options.header) chance -= 0.14;
       return this.clamp(chance, options.header ? 0.16 : 0.18, setPiece === "free_kick" ? 0.82 : 0.88);
@@ -2470,7 +2551,7 @@
         return this.clamp(0.62 + shotQuality * 0.2 - goalkeeperQuality * 0.22, 0.5, 0.84);
       }
       const distanceScore = 1 - this.clamp(distance / 46, 0, 1);
-      let chance = 0.1 + shotQuality * 0.44 + Math.pow(distanceScore, 0.8) * 0.46 - goalkeeperQuality * 0.32 - pressure * 0.1;
+      let chance = 0.1 + shotQuality * 0.44 + Math.pow(distanceScore, 0.8) * 0.46 - goalkeeperQuality * 0.32 - pressure * 0.16;
       if (setPiece === "free_kick") chance += 0.04 + shotQuality * 0.04;
       if (options.header) chance -= 0.08;
       return this.clamp(chance, 0.04, options.header ? 0.3 : 0.74);
@@ -2488,7 +2569,13 @@
       const setPiece = options.setPiece || (options.penalty ? "penalty" : (options.freeKick ? "free_kick" : null));
       if (!blocker || setPiece === "penalty") return 0;
       const setPieceReduction = setPiece === "free_kick" ? 0.65 : 1;
-      return this.clamp((0.04 + blocker.attributes.defense / 520) * setPieceReduction, 0.05, 0.22);
+      const spineBonus = ["ZAG", "VOL"].includes(blocker.role) ? 0.035 : 0;
+      const reading = (
+        blocker.attributes.defense * 0.62 +
+        blocker.attributes.intelligence * 0.24 +
+        blocker.attributes.physical * 0.14
+      ) / 100;
+      return this.clamp((0.035 + reading * 0.18 + spineBonus) * setPieceReduction, 0.05, 0.3);
     }
 
     normalizeShotOutcome(outcome) {
@@ -2503,7 +2590,12 @@
       const goalkeeper = opponent.players.find((player) => player.role === "GOL");
       const blockers = opponent.players
         .filter((player) => player.role !== "GOL")
-        .filter((player) => this.distanceToSegment(player, shooter, this.getGoalPoint(team)) < 2.4)
+        .filter((player) => {
+          const laneDistance = this.distanceToSegment(player, shooter, this.getGoalPoint(team));
+          const centralLane = Math.abs((player.x + shooter.x) / 2 - 50) <= 24;
+          const blockRadius = centralLane && ["ZAG", "VOL"].includes(player.role) ? 3.4 : 2.4;
+          return laneDistance < blockRadius;
+        })
         .sort((a, b) => this.distance(a, shooter) - this.distance(b, shooter));
       const blocker = blockers[0] || null;
       const goal = this.getGoalPoint(team);
@@ -3046,7 +3138,7 @@
         this.placePlayerForRestart(restarter, restartX, restartY);
       }
 
-      if (reason === "free_kick" && !this.isDangerousFreeKick(team, point)) return;
+      if (reason === "offside" || (reason === "free_kick" && !this.isDangerousFreeKick(team, point))) return;
 
       if (goalkeeper) this.placePlayerForRestart(goalkeeper, 50, goal.y === 100 ? 97 : 3);
 
@@ -3337,7 +3429,7 @@
       this.possession = null;
       this.restartRemainingMs = effectiveDelayMs;
       this.positionForRestart(reason, team, point, restarter);
-      this.emit(`${reason}_awarded`, {
+      this.emit(reason === "offside" ? "offside" : `${reason}_awarded`, {
         teamId: team.id,
         x: point.x,
         y: point.y,
@@ -3441,6 +3533,7 @@
     }
 
     getLaneSafety(from, to, opponents) {
+      const spineCover = this.getDefensiveSpineCover(from, to, opponents);
       const danger = opponents.reduce((sum, opponent) => {
         const distance = this.distanceToSegment(opponent, from, to);
         if (distance > 10) return sum;
@@ -3448,9 +3541,33 @@
           opponent.attributes.defense * 0.58 +
           opponent.attributes.intelligence * 0.42
         ) / 100;
-        return sum + ((10 - distance) / 10) * (0.55 + defensiveReading * 0.75);
+        const centralLane = Math.abs((from.x + to.x) / 2 - 50) <= 20;
+        const spineMultiplier = centralLane && ["ZAG", "VOL"].includes(opponent.role)
+          ? 1.28
+          : (centralLane && opponent.role === "MC" ? 1.12 : 1);
+        return sum + ((10 - distance) / 10) * (0.55 + defensiveReading * 0.75) * spineMultiplier;
       }, 0);
-      return this.clamp(1 - danger * 0.24, 0.08, 1);
+      return this.clamp(1 - danger * 0.24 - spineCover * 0.1, 0.06, 1);
+    }
+
+    getDefensiveSpineCover(from, to, opponents) {
+      const centralLane = Math.abs((from.x + to.x) / 2 - 50) <= 20;
+      if (!centralLane) return 0;
+      return opponents.reduce((sum, opponent) => {
+        const roleWeight = opponent.role === "ZAG"
+          ? 1.05
+          : (opponent.role === "VOL" ? 0.96 : (opponent.role === "MC" ? 0.58 : 0.24));
+        if (roleWeight <= 0.24 && Math.abs(opponent.x - 50) > 24) return sum;
+        const distance = this.distanceToSegment(opponent, from, to);
+        if (distance > 9) return sum;
+        const defensiveReading = (
+          opponent.attributes.defense * 0.55 +
+          opponent.attributes.intelligence * 0.3 +
+          (opponent.attributes.physical ?? 50) * 0.15
+        ) / 100;
+        const centralPosition = this.clamp(1 - Math.abs(opponent.x - 50) / 28, 0.35, 1);
+        return sum + ((9 - distance) / 9) * (0.58 + defensiveReading * 0.78) * roleWeight * centralPosition;
+      }, 0);
     }
 
     getOffsidePosition(player, passer) {
@@ -3555,6 +3672,104 @@
     getVisibleStamina(player) {
       const stamina = Number.isFinite(player.stamina) ? player.stamina : 100;
       return this.clamp(Math.min(stamina, this.getEffectiveSprintStamina(player)), 0, 100);
+    }
+
+    getPlayerMatchRating(player) {
+      const stats = player.matchStats || this.createPlayerMatchStats();
+      const passesMissed = Math.max(0, stats.passesAttempted - stats.passesCompleted);
+      const passRate = stats.passesAttempted ? stats.passesCompleted / stats.passesAttempted : null;
+      const tackleMisses = Math.max(0, stats.tacklesAttempted - stats.tacklesWon);
+      const involvement =
+        stats.touches +
+        stats.passesAttempted +
+        stats.shots +
+        stats.carries +
+        stats.interceptions +
+        stats.recoveries +
+        stats.tacklesAttempted +
+        stats.saves;
+
+      let value = player.role === "GOL" ? 6.15 : 6;
+      if (passRate !== null) value += this.clamp((passRate - 0.72) * 1.45, -0.7, 0.65);
+      value += this.clamp(stats.passesCompleted * 0.018, 0, 0.55);
+      value += stats.goals * 1.25;
+      value += (player.role === "GOL" ? stats.saves * 0.32 : stats.saves * 0.2);
+      value += stats.tacklesWon * 0.2;
+      value += stats.interceptions * 0.16;
+      value += stats.recoveries * 0.12;
+      value += stats.carries * 0.06;
+      value += stats.foulsWon * 0.08;
+      value += stats.oneTouchPasses * 0.035;
+      value += this.clamp(involvement / 95, 0, 0.35);
+      value += this.clamp(stats.distanceCovered / 520, 0, 0.28);
+      value -= passesMissed * 0.035;
+      value -= tackleMisses * 0.08;
+      value -= Math.max(0, stats.shots - stats.goals) * 0.035;
+      value -= stats.foulsCommitted * 0.28;
+      value -= stats.offsides * 0.18;
+
+      const rounded = Number(this.clamp(value, 3, 10).toFixed(1));
+      return {
+        value: rounded,
+        label: this.getMatchRatingLabel(rounded),
+        successes: stats.passesCompleted +
+          stats.goals * 4 +
+          stats.saves * 2 +
+          stats.tacklesWon +
+          stats.interceptions +
+          stats.recoveries +
+          stats.carries +
+          stats.foulsWon,
+        mistakes: passesMissed +
+          tackleMisses +
+          stats.foulsCommitted +
+          stats.offsides +
+          Math.max(0, stats.shots - stats.goals)
+      };
+    }
+
+    getMatchRatingLabel(value) {
+      if (value >= 8.5) return "Excelente";
+      if (value >= 7.5) return "Muito bem";
+      if (value >= 6.5) return "Seguro";
+      if (value >= 5.8) return "Regular";
+      return "Abaixo";
+    }
+
+    getPlayerMatchSummary(player) {
+      const stats = player.matchStats || this.createPlayerMatchStats();
+      const parts = [];
+      if (stats.goals) parts.push(`${stats.goals} gol${stats.goals === 1 ? "" : "s"}`);
+      if (stats.saves) parts.push(`${stats.saves} defesa${stats.saves === 1 ? "" : "s"}`);
+      if (stats.passesAttempted >= 3) parts.push(`${stats.passesCompleted}/${stats.passesAttempted} passes`);
+      if (stats.tacklesAttempted) parts.push(`${stats.tacklesWon}/${stats.tacklesAttempted} desarmes`);
+      if (stats.interceptions) parts.push(`${stats.interceptions} ${stats.interceptions === 1 ? "interceptacao" : "interceptacoes"}`);
+      if (stats.recoveries) parts.push(`${stats.recoveries} ${stats.recoveries === 1 ? "recuperacao" : "recuperacoes"}`);
+      if (stats.carries) parts.push(`${stats.carries} ${stats.carries === 1 ? "conducao" : "conducoes"}`);
+      if (stats.foulsCommitted) parts.push(`${stats.foulsCommitted} falta${stats.foulsCommitted === 1 ? "" : "s"}`);
+      if (stats.offsides) parts.push(`${stats.offsides} impedimento${stats.offsides === 1 ? "" : "s"}`);
+      return parts.slice(0, 4).join(" | ") || "participacao discreta";
+    }
+
+    getMatchReport() {
+      return {
+        teams: this.teams.map((team) => ({
+          teamId: team.id,
+          name: team.name,
+          shortName: team.shortName,
+          score: team.score,
+          players: team.players
+            .map((player) => ({
+              playerId: player.id,
+              number: player.number,
+              name: player.name,
+              role: player.role,
+              rating: this.getPlayerMatchRating(player),
+              summary: this.getPlayerMatchSummary(player)
+            }))
+            .sort((a, b) => b.rating.value - a.rating.value || a.number - b.number)
+        }))
+      };
     }
 
     recordMovementDistance(player, movementMode, travelledDistance) {
@@ -3718,14 +3933,17 @@
             visibleStamina: this.getVisibleStamina(player),
             preferredPositions: [...player.preferredPositions],
             attributes: { ...player.attributes },
-            matchStats: { ...player.matchStats }
+            offBallIntent: player.offBallIntent,
+            matchStats: { ...player.matchStats },
+            matchRating: this.getPlayerMatchRating(player)
           }))
         })),
         possession: this.possession ? { ...this.possession } : null,
         ball: {
           ...this.ball,
           contactedPlayerIds: [...this.ball.contactedPlayerIds]
-        }
+        },
+        matchReport: this.getMatchReport()
       };
     }
 

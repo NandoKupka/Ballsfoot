@@ -97,6 +97,11 @@
       this.restartNoticeTeam = byId("restart-notice-team");
       this.restartNoticeTitle = byId("restart-notice-title");
       this.restartNoticeDetail = byId("restart-notice-detail");
+      this.matchReportModal = byId("match-report-modal");
+      this.matchReportTitle = byId("match-report-title");
+      this.matchReportDetail = byId("match-report-detail");
+      this.matchReportContent = byId("match-report-content");
+      this.matchReportCloseButton = byId("match-report-close");
     }
 
     renderTeamPanels() {
@@ -189,10 +194,12 @@
         this.render();
       });
       this.setPieceAutoButton.addEventListener("click", () => this.selectSetPieceTaker(null));
+      this.matchReportCloseButton.addEventListener("click", () => this.closeMatchReport());
       root.addEventListener("resize", () => {
         this.positionGoalModal();
         this.positionSetPieceModal();
         this.positionRestartNotice();
+        this.positionMatchReport();
       });
     }
 
@@ -233,10 +240,14 @@
 
     consumeEvents(snapshot = this.engine.getSnapshot()) {
       this.engine.drainEvents().forEach((event) => {
-        if (event.type === "match_reset") this.beginNewMatchLog();
+        if (event.type === "match_reset") {
+          this.beginNewMatchLog();
+          this.closeMatchReport();
+        }
         const entry = this.describeEvent(event, snapshot);
         if (entry) this.addLog(entry);
         if (event.type === "goal") this.openGoalModal(event, snapshot);
+        if (event.type === "fulltime") this.openMatchReport(snapshot);
         if (this.isSelectableSetPieceEvent(event)) this.openSetPieceModal(event, snapshot);
         if (this.isRestartNoticeEvent(event)) this.openRestartNotice(event, snapshot);
       });
@@ -956,6 +967,51 @@
       this.goalOkButton.focus();
     }
 
+    openMatchReport(snapshot = this.engine.getSnapshot()) {
+      const report = snapshot.matchReport;
+      if (!report || !this.matchReportModal) return;
+      this.matchReportTitle.textContent = "Relatorio final";
+      this.matchReportDetail.textContent = `${snapshot.teams[0].shortName} ${snapshot.teams[0].score} x ${snapshot.teams[1].score} ${snapshot.teams[1].shortName} | notas por acertos gerais`;
+      const teamSections = report.teams.map((teamReport) => {
+        const section = this.document.createElement("section");
+        const heading = this.document.createElement("h3");
+        const list = this.document.createElement("ol");
+        section.className = "match-report-team";
+        heading.textContent = `${teamReport.shortName} (${teamReport.score})`;
+        list.className = "match-report-list";
+        teamReport.players.forEach((player) => {
+          const item = this.document.createElement("li");
+          const shirt = this.document.createElement("span");
+          const nameBlock = this.document.createElement("span");
+          const name = this.document.createElement("strong");
+          const detail = this.document.createElement("small");
+          const rating = this.document.createElement("b");
+          item.className = "match-report-player";
+          shirt.className = "match-report-shirt";
+          shirt.textContent = player.number;
+          nameBlock.className = "match-report-name";
+          name.textContent = `${player.name} | ${player.role}`;
+          detail.textContent = `${player.rating.label} | ${player.summary}`;
+          nameBlock.append(name, detail);
+          rating.className = "match-report-rating";
+          rating.textContent = player.rating.value.toFixed(1);
+          item.append(shirt, nameBlock, rating);
+          list.appendChild(item);
+        });
+        section.append(heading, list);
+        return section;
+      });
+      this.matchReportContent.replaceChildren(...teamSections);
+      this.matchReportModal.hidden = false;
+      this.positionMatchReport();
+      this.matchReportCloseButton.focus();
+    }
+
+    closeMatchReport() {
+      if (!this.matchReportModal) return;
+      this.matchReportModal.hidden = true;
+    }
+
     positionGoalModal() {
       if (!this.field || this.goalModal.hidden) return;
       const rect = this.field.getBoundingClientRect();
@@ -981,6 +1037,15 @@
       this.restartNoticeModal.style.setProperty("--goal-modal-top", `${rect.top + rect.height / 2}px`);
       this.restartNoticeModal.style.setProperty("--goal-modal-width", `${rect.width}px`);
       this.restartNoticeModal.style.setProperty("--goal-modal-height", `${rect.height}px`);
+    }
+
+    positionMatchReport() {
+      if (!this.field || !this.matchReportModal || this.matchReportModal.hidden) return;
+      const rect = this.field.getBoundingClientRect();
+      this.matchReportModal.style.setProperty("--goal-modal-left", `${rect.left + rect.width / 2}px`);
+      this.matchReportModal.style.setProperty("--goal-modal-top", `${rect.top + rect.height / 2}px`);
+      this.matchReportModal.style.setProperty("--goal-modal-width", `${rect.width}px`);
+      this.matchReportModal.style.setProperty("--goal-modal-height", `${rect.height}px`);
     }
 
     formatEventClock(matchMs) {

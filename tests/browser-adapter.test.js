@@ -76,12 +76,14 @@ class FakeDocument {
       "copy-feedback", "goal-modal", "goal-team", "goal-title", "goal-detail", "goal-ok",
       "set-piece-modal", "set-piece-team", "set-piece-title", "set-piece-detail",
       "set-piece-list", "set-piece-auto", "restart-notice-modal", "restart-notice-team",
-      "restart-notice-title", "restart-notice-detail"
+      "restart-notice-title", "restart-notice-detail", "match-report-modal",
+      "match-report-title", "match-report-detail", "match-report-content", "match-report-close"
     ].forEach((id) => this.elements.set(id, new FakeElement()));
 
     this.elements.get("goal-modal").hidden = true;
     this.elements.get("set-piece-modal").hidden = true;
     this.elements.get("restart-notice-modal").hidden = true;
+    this.elements.get("match-report-modal").hidden = true;
     this.elements.get("speed-slider").value = "1";
   }
 
@@ -466,6 +468,61 @@ test("match data is rendered vertically with both teams compared per metric", ()
     ["Posse", "Passes", "Finalizacoes", "Faltas", "Laterais", "Escanteios"]
   );
   stats.children.slice(1).forEach((row) => assert.equal(row.children.length, 3));
+});
+
+test("fulltime opens a player ratings report", () => {
+  const document = new FakeDocument();
+  const context = vm.createContext({
+    console,
+    document,
+    navigator: { clipboard: { writeText: async () => {} } },
+    performance: { now: () => 0 },
+    requestAnimationFrame: () => 1,
+    cancelAnimationFrame: () => {},
+    addEventListener: () => {},
+    clearTimeout,
+    setTimeout,
+    Blob,
+    URL: {
+      createObjectURL: () => "blob:test",
+      revokeObjectURL: () => {}
+    }
+  });
+  context.globalThis = context;
+
+  const root = path.resolve(__dirname, "..");
+  vm.runInContext(fs.readFileSync(path.join(root, "src", "config", "teams.js"), "utf8"), context);
+  vm.runInContext(fs.readFileSync(path.join(root, "src", "domain", "match-engine.js"), "utf8"), context);
+  vm.runInContext(fs.readFileSync(path.join(root, "src", "ui", "browser-game-adapter.js"), "utf8"), context);
+  document.listeners.get("DOMContentLoaded")();
+
+  const game = context.tacticsGame;
+  const scorer = game.engine.teams[0].players.find((player) => player.role === "ATA");
+  Object.assign(scorer.matchStats, {
+    touches: 30,
+    passesAttempted: 10,
+    passesCompleted: 9,
+    shots: 2,
+    goals: 2,
+    carries: 3
+  });
+  game.engine.teams[0].score = 2;
+  game.engine.teams[1].score = 1;
+  game.engine.emit("fulltime");
+  game.consumeEvents(game.engine.getSnapshot());
+
+  const modal = document.getElementById("match-report-modal");
+  const content = document.getElementById("match-report-content");
+  assert.equal(modal.hidden, false);
+  assert.equal(document.getElementById("match-report-title").textContent, "Relatorio final");
+  assert.equal(content.children.length, 2);
+  const homeList = content.children[0].children[1];
+  const firstPlayer = homeList.children[0];
+  assert.ok(firstPlayer.children[1].children[0].textContent.includes(scorer.name));
+  assert.ok(Number(firstPlayer.children[2].textContent) >= 8);
+
+  document.getElementById("match-report-close").listeners.get("click")();
+  assert.equal(modal.hidden, true);
 });
 
 test("visible event feed keeps only important events with newest first", () => {

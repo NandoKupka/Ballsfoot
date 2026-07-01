@@ -786,7 +786,8 @@
 
     .goal-modal,
     .set-piece-modal,
-    .restart-notice-modal {
+    .restart-notice-modal,
+    .match-report-modal {
       position: fixed;
       left: var(--goal-modal-left, 50%);
       top: var(--goal-modal-top, 50%);
@@ -804,7 +805,8 @@
 
     .goal-modal[hidden],
     .set-piece-modal[hidden],
-    .restart-notice-modal[hidden] {
+    .restart-notice-modal[hidden],
+    .match-report-modal[hidden] {
       display: none;
     }
 
@@ -815,7 +817,8 @@
 
     .goal-dialog,
     .set-piece-dialog,
-    .restart-notice-dialog {
+    .restart-notice-dialog,
+    .match-report-dialog {
       width: min(330px, 100%);
       border: 1px solid rgba(255, 216, 79, 0.3);
       border-radius: var(--radius);
@@ -839,6 +842,14 @@
       animation: notice-pop var(--notice-duration-ms, 1000ms) ease both;
     }
 
+    .match-report-dialog {
+      width: min(610px, 100%);
+      max-height: min(820px, calc(100vh - 56px));
+      overflow: auto;
+      text-align: left;
+      gap: 12px;
+    }
+
     @keyframes notice-pop {
       0% { opacity: 0; transform: translateY(8px) scale(0.98); }
       14% { opacity: 1; transform: translateY(0) scale(1); }
@@ -848,7 +859,8 @@
 
     .goal-eyebrow,
     .set-piece-eyebrow,
-    .restart-notice-eyebrow {
+    .restart-notice-eyebrow,
+    .match-report-eyebrow {
       justify-self: center;
       border: 1px solid rgba(255, 255, 255, 0.12);
       border-radius: 999px;
@@ -863,7 +875,8 @@
 
     .goal-dialog h2,
     .set-piece-dialog h2,
-    .restart-notice-dialog h2 {
+    .restart-notice-dialog h2,
+    .match-report-dialog h2 {
       margin: 0;
       color: var(--yellow);
       font-size: clamp(25px, 4vw, 34px);
@@ -873,7 +886,8 @@
 
     .goal-dialog p,
     .set-piece-dialog p,
-    .restart-notice-dialog p {
+    .restart-notice-dialog p,
+    .match-report-dialog p {
       margin: 0;
       color: var(--text);
       font-size: 13px;
@@ -936,6 +950,97 @@
     .set-piece-score {
       color: var(--yellow);
       font-weight: 900;
+    }
+
+    .match-report-content {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .match-report-team {
+      display: grid;
+      gap: 8px;
+      min-width: 0;
+    }
+
+    .match-report-team h3 {
+      margin: 0;
+      color: var(--text);
+      font-size: 14px;
+      letter-spacing: 0;
+    }
+
+    .match-report-list {
+      display: grid;
+      gap: 6px;
+      margin: 0;
+      padding: 0;
+      list-style: none;
+    }
+
+    .match-report-player {
+      display: grid;
+      grid-template-columns: 28px minmax(0, 1fr) 42px;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.055);
+      padding: 7px;
+    }
+
+    .match-report-shirt {
+      width: 26px;
+      height: 26px;
+      display: grid;
+      place-items: center;
+      border-radius: 50%;
+      background: rgba(255, 255, 255, 0.12);
+      font-size: 12px;
+      font-weight: 900;
+    }
+
+    .match-report-name {
+      display: grid;
+      gap: 2px;
+      min-width: 0;
+    }
+
+    .match-report-name strong,
+    .match-report-name small {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .match-report-name strong {
+      color: var(--text);
+      font-size: 12px;
+    }
+
+    .match-report-name small {
+      color: var(--muted);
+      font-size: 11px;
+    }
+
+    .match-report-rating {
+      justify-self: end;
+      min-width: 38px;
+      border-radius: 8px;
+      background: rgba(255, 216, 79, 0.14);
+      color: var(--yellow);
+      padding: 5px 7px;
+      text-align: center;
+      font-size: 14px;
+      font-weight: 900;
+    }
+
+    @media (max-width: 680px) {
+      .match-report-content {
+        grid-template-columns: 1fr;
+      }
     }
 
     .test-restart-actions {
@@ -1101,6 +1206,16 @@
       <span class="restart-notice-eyebrow" id="restart-notice-team">Bola parada</span>
       <h2 id="restart-notice-title">Escanteio</h2>
       <p id="restart-notice-detail"></p>
+    </div>
+  </div>
+
+  <div class="match-report-modal" id="match-report-modal" hidden>
+    <div class="match-report-dialog" role="dialog" aria-modal="true" aria-labelledby="match-report-title">
+      <span class="match-report-eyebrow">Fim de jogo</span>
+      <h2 id="match-report-title">Relatorio final</h2>
+      <p id="match-report-detail"></p>
+      <div class="match-report-content" id="match-report-content"></div>
+      <button class="btn primary" id="match-report-close" type="button">Fechar</button>
     </div>
   </div>
 
